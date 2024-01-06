@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+
 using VTOLVR.Multiplayer;
 using Triquetra.FlatScreen.TrackIR;
 using System.Reflection;
@@ -99,6 +100,11 @@ namespace Triquetra.FlatScreen
             if (GUILayout.Button("Finish Mission"))
             {
                 endMission?.ReturnToMainButton();
+                showEndScreenWindow = false;
+            }
+            if (QuicksaveManager.quickloadAvailable && GUILayout.Button("Load Quicksave"))
+            {
+                endMission?.Quickload();
                 showEndScreenWindow = false;
             }
         }
@@ -251,7 +257,7 @@ namespace Triquetra.FlatScreen
 
             if (eyeCamera == null || helmetCam == null)
                 return;
-
+            // TODO: DON'T switch to spectator camera
             foreach(Camera specCam in GetSpectatorCameras())
             {
                 specCam.depth = -6;
