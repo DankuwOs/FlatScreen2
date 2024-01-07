@@ -55,7 +55,7 @@ namespace Triquetra.FlatScreen
                     {
                         ResetCameraRotation();
                         UnHideGloves();
-                        UnCleanCameras();
+                        Deactivate();
                     }
 
                     flatScreenEnabled = value;
@@ -248,36 +248,47 @@ namespace Triquetra.FlatScreen
         }
 
         bool hasCleanedCameras = false;
-        public void CleanCameras()
+        public void Activate()
         {
             if (hasCleanedCameras)
                 return;
             Camera eyeCamera = GetEyeCamera();
-            GameObject helmetCam = eyeCamera?.transform?.Find("Camera (eye) Helmet")?.gameObject;
 
-            if (eyeCamera == null || helmetCam == null)
+            if (eyeCamera == null)
                 return;
-            // TODO: DON'T switch to spectator camera
+            
             foreach(Camera specCam in GetSpectatorCameras())
             {
                 specCam.depth = -6;
             }
-
-            helmetCam?.SetActive(false);
+            
             eyeCamera.fieldOfView = DefaultCameraFOV;
             hasCleanedCameras = true;
+
+            SetAvatarVisibility(false);
         }
 
-        public void UnCleanCameras()
+        public void Deactivate()
         {
             hasCleanedCameras = false;
             Camera eyeCamera = GetEyeCamera();
-            GameObject helmetCam = eyeCamera?.transform?.Find("Camera (eye) Helmet")?.gameObject;
 
-            if (eyeCamera == null || helmetCam == null)
+            if (eyeCamera == null)
                 return;
 
-            helmetCam?.SetActive(true);
+            SetAvatarVisibility(true);
+        }
+
+        public void SetAvatarVisibility(bool isVis)
+        {
+            /* The scene paths here will likely need to be updated if an update changes any of these. */
+
+            // body visiblity
+            GameObject.Find("suit2/RiggedSuit.001")?.SetActive(isVis);
+
+            // hands visibility
+            GameObject.Find("Controller (left)/newGlove/SWAT_glower_pivot.002")?.SetActive(isVis);
+            GameObject.Find("Controller (right)/newGlove/SWAT_glower_pivot.002")?.SetActive(isVis);
         }
 
         public void Update()
@@ -460,7 +471,7 @@ namespace Triquetra.FlatScreen
             {
                 frame = 0;
                 if (IsFlyingScene())
-                    CleanCameras();
+                    Activate();
 
                 HideGloves();
                 CheckEndMission();
@@ -562,6 +573,7 @@ namespace Triquetra.FlatScreen
         }
         public void Awake()
         {
+            // TODO: bind to map/vehicle/player loaded event
             SceneManager.activeSceneChanged += RecleanOnSceneChange;
             Instance = this;
         }
