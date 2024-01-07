@@ -314,25 +314,11 @@ namespace Triquetra.FlatScreen
             if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z))
                 ResetCameraRotation();
 
-            if (Input.mouseScrollDelta.y != 0 && Input.GetKey(KeyCode.LeftControl)) // ctrl + scroll to zoom (set fov)
-            {
-                float deltaFOV = Input.mouseScrollDelta.y < 0 ? 5 : -5;
-                SetCameraFOV(Math.Min(Math.Max(GetCameraFOV() + deltaFOV, 30), 120));
-            }
-
             HighlightObject(targetedVRInteractable);
-
-            //if (targetedVRInteractable == null)
-            //    return;
-
-            VRTwistKnob twistKnob = targetedVRInteractable?.GetComponent<VRTwistKnob>();
-            VRTwistKnobInt twistKnobInt = targetedVRInteractable?.GetComponent<VRTwistKnobInt>();
-            VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
-            VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
 
             if (Input.GetMouseButtonDown(0)) // left mouse down
             {
-                if (targetedVRInteractable != null && heldVRInteractable == null && twistKnob == null)
+                if (targetedVRInteractable != null && heldVRInteractable == null)
                 {
                     Interactions.Interact(targetedVRInteractable);
                     heldVRInteractable = targetedVRInteractable;
@@ -340,30 +326,45 @@ namespace Triquetra.FlatScreen
             }
             if (Input.GetMouseButtonUp(0)) // left mouse up
             {
-                Debug.Log($"Trying to unhold mouse clicks: {heldVRInteractable} // {twistKnob}");
-                if (heldVRInteractable != null && twistKnob == null)
+                if (heldVRInteractable != null)
                 {
                     Interactions.AntiInteract(heldVRInteractable);
                     heldVRInteractable = null;
                 }
             }
-            if (Input.mouseScrollDelta.y != 0 && !Input.GetKey(KeyCode.LeftControl)) // scroll wheel to move knobs/levers
+
+            // scroll wheel
+            if (Input.mouseScrollDelta.y != 0)
             {
-                if (twistKnob != null)
+                if (Input.GetKey(KeyCode.LeftControl) || Input.GetMouseButton(1)) // zoom if ctrl/RMB
                 {
-                    Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
+                    float deltaFOV = Input.mouseScrollDelta.y < 0 ? 5 : -5;
+                    SetCameraFOV(Math.Min(Math.Max(GetCameraFOV() + deltaFOV, 30), 120));
                 }
-                else if (twistKnobInt != null)
+                else // otherwise, interact
                 {
-                    Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                }
-                else if (lever != null)
-                {
-                    Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                }
-                else if (throttle != null)
-                {
-                    Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
+                    // Scrollables interactables
+                    VRTwistKnob twistKnob = targetedVRInteractable?.GetComponent<VRTwistKnob>();
+                    VRTwistKnobInt twistKnobInt = targetedVRInteractable?.GetComponent<VRTwistKnobInt>();
+                    VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
+                    VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
+
+                    if (twistKnob != null)
+                    {
+                        Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
+                    }
+                    else if (twistKnobInt != null)
+                    {
+                        Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                    }
+                    else if (lever != null)
+                    {
+                        Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                    }
+                    else if (throttle != null)
+                    {
+                        Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
+                    }
                 }
             }
         }
@@ -563,6 +564,7 @@ namespace Triquetra.FlatScreen
                 return;
 
             cameraEyeGameObject.transform.localRotation = Quaternion.identity;
+            cameraRotation = Vector2.zero;
         }
 
         public void SetCameraFOV(float fov)
@@ -586,7 +588,7 @@ namespace Triquetra.FlatScreen
         public void Awake()
         {
             // TODO: bind to map/vehicle/player loaded event
-            SceneManager.activeSceneChanged += RecleanOnSceneChange;
+            SceneManager.activeSceneChanged += OnSceneChange;
             Instance = this;
         }
 
@@ -598,14 +600,15 @@ namespace Triquetra.FlatScreen
             cameraEyeGameObject = null;
             thirdPerson = false;
         }
-        private void RecleanOnSceneChange(Scene scene1, Scene scene2)
+        private void OnSceneChange(Scene scene1, Scene scene2)
         {
             Reclean();
+            ResetCameraRotation();
         }
 
         public void OnDestroy()
         {
-            SceneManager.activeSceneChanged -= RecleanOnSceneChange;
+            SceneManager.activeSceneChanged -= OnSceneChange;
         }
 
         public void GetHoveredObject()
