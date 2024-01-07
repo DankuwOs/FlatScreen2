@@ -30,6 +30,7 @@ namespace Triquetra.FlatScreen
         public TrackIRTransformer TrackIRTransformer { get; private set; }
 
         public VRInteractable targetedVRInteractable;
+        public VRInteractable heldVRInteractable;
         public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
 
         private Rect endScreenWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
@@ -155,6 +156,17 @@ namespace Triquetra.FlatScreen
                         GUILayout.Label("[None]");
                 }
                 GUILayout.EndHorizontal();
+
+                GUILayout.BeginHorizontal();
+                {
+                    GUILayout.Label($"Held-Down VRInteractable:");
+                    if (heldVRInteractable != null)
+                        GUILayout.Label(heldVRInteractable?.interactableName ?? "???");
+                    else
+                        GUILayout.Label("[None]");
+                }
+                GUILayout.EndHorizontal();
+
                 GUILayout.Label("Press Middle mouse to click and scroll wheel for non-integer knobs");
 
                 GUILayout.Space(20);
@@ -310,48 +322,48 @@ namespace Triquetra.FlatScreen
 
             HighlightObject(targetedVRInteractable);
 
-            if (targetedVRInteractable == null)
-                return;
+            //if (targetedVRInteractable == null)
+            //    return;
 
             VRTwistKnob twistKnob = targetedVRInteractable?.GetComponent<VRTwistKnob>();
             VRTwistKnobInt twistKnobInt = targetedVRInteractable?.GetComponent<VRTwistKnobInt>();
             VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
             VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
 
-            if (Input.GetMouseButtonDown(2)) // select with middle mouse
+            if (Input.GetMouseButtonDown(0)) // left mouse down
             {
-                if (targetedVRInteractable != null && twistKnob == null)
+                if (targetedVRInteractable != null && heldVRInteractable == null && twistKnob == null)
                 {
                     Interactions.Interact(targetedVRInteractable);
+                    heldVRInteractable = targetedVRInteractable;
                 }
             }
-            if (Input.GetMouseButtonUp(2)) // select with middle mouse
+            if (Input.GetMouseButtonUp(0)) // left mouse up
             {
-                if (targetedVRInteractable != null && twistKnob == null)
+                Debug.Log($"Trying to unhold mouse clicks: {heldVRInteractable} // {twistKnob}");
+                if (heldVRInteractable != null && twistKnob == null)
                 {
-                    Interactions.AntiInteract(targetedVRInteractable);
+                    Interactions.AntiInteract(heldVRInteractable);
+                    heldVRInteractable = null;
                 }
             }
-            if (Input.mouseScrollDelta.y != 0) // scroll wheel to move knobs/levers & ctrl+scroll to zoom
+            if (Input.mouseScrollDelta.y != 0 && !Input.GetKey(KeyCode.LeftControl)) // scroll wheel to move knobs/levers
             {
-                if (!Input.GetKey(KeyCode.LeftControl)) // ctrl not being held
+                if (twistKnob != null)
                 {
-                    if (twistKnob != null)
-                    {
-                        Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
-                    }
-                    else if (twistKnobInt != null)
-                    {
-                        Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                    }
-                    else if (lever != null)
-                    {
-                        Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                    }
-                    else if (throttle != null)
-                    {
-                        Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
-                    }
+                    Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
+                }
+                else if (twistKnobInt != null)
+                {
+                    Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                }
+                else if (lever != null)
+                {
+                    Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                }
+                else if (throttle != null)
+                {
+                    Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
                 }
             }
         }
