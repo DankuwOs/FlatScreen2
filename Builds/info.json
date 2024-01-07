@@ -1,22 +1,22 @@
 {
-  "name": "FlatScreen",
-  "description": "Hold right mouse button to look around or use **TrackIR.**\r\n\r\nUse middle mouse button to click buttons, flick levers and toggle doors. Using your scroll wheel allows you to turn knobs, also move levers and adjust throttles. \r\n\r\nCurrently no keyboard support is implemented but you can use **TriquetraInput** to fly with your joystick(s)",
-  "dll_file": "FlatScreen.dll",
-  "last_edit": 638093394332617841,
+  "name": "FlatScreen2",
+  "description": "Hold right mouse button to look around, or use **TrackIR.**\r\n\r\nUse left click to click buttons, flick levers and toggle doors. You can use the scroll wheel to turn knobs, move levers, and adjust throttle.\r\n\r\nYou can use **TriquetraInput** to fly with your joystick(s)",
+  "dll_file": "FlatScreen2.dll",
+  "last_edit": 638401936253971633,
   "pub_id": "",
   "json_version": "",
-  "version": "1.0.3",
-  "tagline": "VTOL VR without the VR",
-  "repository": "https://github.com/frdhog/FlatScreen",
+  "version": "1.0.0",
+  "tagline": "Without \"VR\" it's just VTOL.",
+  "repository": "https://github.com/muskit/FlatScreen2",
   "is_public": false,
   "unlisted": true,
   "preview_image": "preview.png",
   "web_preview_image": "web_preview.png",
   "dependencies": [
     "TrackIRUnity.dll",
-	"TriquetraInteractions.dll"
+    "TriquetraInteractions.dll"
   ],
   "mod_dependencies": null,
-  "ContentType": 3,
-  "menu_mod": true
+  "menu_mod": true,
+  "ContentType": 3
 }

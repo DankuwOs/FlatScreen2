@@ -5,14 +5,14 @@ using System.Text;
 using System.Threading.Tasks;
 using Harmony;
 
-namespace Triquetra.FlatScreen
+namespace Triquetra.FlatScreen2
 {
     [HarmonyPatch(typeof(FlightSceneManager), "InstantScenarioRestartRoutine")]
     internal class FlightSceneManagerRestart
     {
         static void Postfix()
         {
-            FlatScreenMonoBehaviour.Instance?.Reclean();
+            FlatScreen2MonoBehaviour.Instance?.Reclean();
         }
     }
 }

@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.XR;
 
-namespace Triquetra.FlatScreen
+namespace Triquetra.FlatScreen2
 {
-    public class FlatScreenPlugin : VTOLMOD
+    public class FlatScreen2Plugin : VTOLMOD
     {
         private GameObject monoBehaviour;
 
@@ -24,9 +24,9 @@ namespace Triquetra.FlatScreen
         {
             if (monoBehaviour != null)
                 return;
-            Log("Creating FlatScreenMonoBehaviour");
+            Log("Creating FlatScreen2MonoBehaviour");
             monoBehaviour = new GameObject();
-            monoBehaviour.AddComponent<FlatScreenMonoBehaviour>();
+            monoBehaviour.AddComponent<FlatScreen2MonoBehaviour>();
             GameObject.DontDestroyOnLoad(monoBehaviour);
         }
 
@@ -34,7 +34,7 @@ namespace Triquetra.FlatScreen
         {
             if (monoBehaviour == null)
                 return;
-            Log("Destroying FlatScreenMonoBehaviour");
+            Log("Destroying FlatScreen2MonoBehaviour");
             GameObject.Destroy(monoBehaviour);
         }
     }

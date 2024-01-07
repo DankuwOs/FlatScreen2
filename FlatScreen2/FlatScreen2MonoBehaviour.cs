@@ -11,14 +11,12 @@ using VTOLVR.Multiplayer;
 using Triquetra.FlatScreen.TrackIR;
 using System.Reflection;
 
-namespace Triquetra.FlatScreen
+namespace Triquetra.FlatScreen2
 {
-    public class FlatScreenMonoBehaviour : MonoBehaviour
+    public class FlatScreen2MonoBehaviour : MonoBehaviour
     {
         // https://vtolvr-mods.com/viewbugs/zj7ylyrf/
-        // TODO: Fix hand positions
         // TODO: Scrollable scrollbars
-        // TODO?: Hide mouse on right click
         // TODO?: WASDEQ controls
         // TODO?: Better ImGui for restarting/ending mission
         // TODO?: Bobblehead gets a VRInteractable
@@ -35,10 +33,57 @@ namespace Triquetra.FlatScreen
 
         private Rect endScreenWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
         private bool showEndScreenWindow = false;
-        private bool thirdPerson = false;
+        private bool viewIsSpec = false;
         EndMission endMission;
 
-        public static FlatScreenMonoBehaviour Instance { get; private set; }
+        // player avatar
+        private GameObject playerBody = null;
+        private GameObject playerLeftHand = null;
+        private GameObject playerRightHand = null;
+
+        public static FlatScreen2MonoBehaviour Instance { get; private set; }
+
+        public static bool IsFlyingScene()
+        {
+            int buildIndex = SceneManager.GetActiveScene().buildIndex;
+            return buildIndex == 7 || buildIndex == 11;
+        }
+
+        public static bool IsReadyRoomScene()
+        {
+            int buildIndex = SceneManager.GetActiveScene().buildIndex;
+            return buildIndex == 2;
+        }
+
+        public static Camera GetEyeCamera()
+        {
+            IEnumerable<Camera> cameras = GetAllEyeCameras().OrderByDescending(c => c.depth);
+            if (cameras.Any(x => x.gameObject?.layer == LayerMask.NameToLayer("MPBriefing")))
+            {
+                if (VTOLMPSceneManager.instance.localPlayer.chosenTeam)
+                {
+                    GameObject localAvatarObject = typeof(VTOLMPSceneManager)
+                        .GetField("localAvatarObj", BindingFlags.Instance | BindingFlags.NonPublic)?
+                        .GetValue(VTOLMPSceneManager.instance) as GameObject;
+                    if (localAvatarObject != null)
+                    {
+                        Camera localAvatarCam = localAvatarObject?.GetComponentInChildren<Camera>(false);
+                        if (localAvatarCam != null)
+                        {
+                            return localAvatarCam;
+                        }
+                    }
+                }
+            }
+            var cam = cameras.FirstOrDefault();
+            Debug.Log($"[FlatScreen 2] using camera {cam.name}");
+            return cam;
+        }
+
+        public static IEnumerable<Camera> GetAllEyeCameras()
+        {
+            return GameObject.FindObjectsOfType<Camera>(false).Where(c => c.name == "Camera (eye)" && c.isActiveAndEnabled);
+        }
 
         public bool Enabled
         {
@@ -55,7 +100,6 @@ namespace Triquetra.FlatScreen
                     else // just disabled
                     {
                         ResetCameraRotation();
-                        UnHideGloves();
                         Deactivate();
                     }
 
@@ -64,12 +108,25 @@ namespace Triquetra.FlatScreen
             }
         }
 
+        public void Awake()
+        {
+            // TODO: bind to map/vehicle/player loaded event
+            SceneManager.activeSceneChanged += OnSceneChange;
+            Instance = this;
+        }
+
+        private void OnSceneChange(Scene scene1, Scene scene2)
+        {
+            Reclean();
+            ResetCameraRotation();
+        }
+
         public void OnGUI()
         {
             if (showWindow)
-                windowRect = GUI.Window(405, windowRect, DoWindow, "FlatScreen Control Panel");
+                windowRect = GUI.Window(405, windowRect, DoMainWindow, "FlatScreen2 Control Panel");
             if (showEndScreenWindow)
-                endScreenWindowRect = GUI.Window(406, endScreenWindowRect, DoEndScreenWindow, "FlatScreen End Screen");
+                endScreenWindowRect = GUI.Window(406, endScreenWindowRect, DoEndScreenWindow, "FlatScreen2 End Screen");
         }
 
         public void ShowEndScreenWindow(EndMission endMission)
@@ -92,6 +149,7 @@ namespace Triquetra.FlatScreen
             }
 
             // GUILayout.Label($"Completion Time: {endMission.metCompleteText?.text}");
+            // TODO: log
 
             if (GUILayout.Button("Restart Mission"))
             {
@@ -110,7 +168,8 @@ namespace Triquetra.FlatScreen
             }
         }
 
-        void DoWindow(int windowID)
+        private Vector2 scrollPosition;
+        void DoMainWindow(int windowID)
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
 
@@ -123,16 +182,19 @@ namespace Triquetra.FlatScreen
 
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
             {
-                GUILayout.BeginHorizontal();
+                if (!TryUpdateCameraTracks())
                 {
-                    float FOV = GetCameraFOV();
-                    float newFOV = FOV;
-                    GUILayout.Label($"FOV: {FOV}");
-                    newFOV = Mathf.Round(GUILayout.HorizontalSlider(FOV, 30f, 120f));
-                    if (newFOV != FOV)
-                        SetCameraFOV(newFOV);
+                    GUILayout.BeginHorizontal();
+                    {
+                        float FOV = GetCameraFOV();
+                        float newFOV = FOV;
+                        GUILayout.Label($"FOV: {FOV}");
+                        newFOV = Mathf.Round(GUILayout.HorizontalSlider(FOV, 30f, 120f));
+                        if (newFOV != FOV)
+                            SetCameraFOV(newFOV);
+                    }
+                    GUILayout.EndHorizontal();
                 }
-                GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"Mouse Sensitivity: {Sensitivity}");
@@ -167,7 +229,7 @@ namespace Triquetra.FlatScreen
                 }
                 GUILayout.EndHorizontal();
 
-                GUILayout.Label("Press Middle mouse to click and scroll wheel for non-integer knobs");
+                GUILayout.Label("Use the scroll wheel on non-integer knobs");
 
                 GUILayout.Space(20);
 
@@ -176,13 +238,16 @@ namespace Triquetra.FlatScreen
                     Reclean();
                 }
 
-                if (GUILayout.Button(thirdPerson ? "First Person" : "Third Person"))
+                if (GUILayout.Button("View: " + (viewIsSpec ? "S-CAM" : "First Person")))
                 {
-                    thirdPerson = !thirdPerson;
+                    viewIsSpec = !viewIsSpec;
+
                     foreach (Camera specCam in GetSpectatorCameras())
                     {
-                        specCam.depth = thirdPerson ? -6 : 50;
+                        specCam.depth = viewIsSpec ? 50 : -6;
                     }
+
+                    SetAvatarVisibility(viewIsSpec);
                 }
 
                 GUI.enabled = true;
@@ -237,15 +302,19 @@ namespace Triquetra.FlatScreen
             GUILayout.EndScrollView();
         }
 
-        public static bool IsFlyingScene()
+        /// <summary>
+        /// Update this instance's camera variables. Returns true if successful.
+        /// </summary>
+        /// <returns></returns>
+        public bool TryUpdateCameraTracks()
         {
-            int buildIndex = SceneManager.GetActiveScene().buildIndex;
-            return buildIndex == 7 || buildIndex == 11;
-        }
-        public static bool IsReadyRoomScene()
-        {
-            int buildIndex = SceneManager.GetActiveScene().buildIndex;
-            return buildIndex == 2;
+            if (cameraEyeGameObject == null)
+            {
+                cameraEyeGameObject = GetEyeCamera()?.gameObject;
+                hmdCameraGameObject = GameObject.Find("Camera HMD HUD");
+            }
+
+            return cameraEyeGameObject != null;
         }
 
         public void SetTrackingObject(GameObject trackingObject)
@@ -259,30 +328,28 @@ namespace Triquetra.FlatScreen
             TrackIRTransformer.trackedObject = trackingObject?.transform;
         }
 
-        bool hasCleanedCameras = false;
+        bool activated = false;
         public void Activate()
         {
-            if (hasCleanedCameras)
+            if (activated)
                 return;
-            Camera eyeCamera = GetEyeCamera();
+            if (!TryUpdateCameraTracks())
+                return;
 
-            if (eyeCamera == null)
-                return;
-            
-            foreach(Camera specCam in GetSpectatorCameras())
+            foreach (Camera specCam in GetSpectatorCameras())
             {
                 specCam.depth = -6;
             }
             
-            eyeCamera.fieldOfView = DefaultCameraFOV;
-            hasCleanedCameras = true;
+            SetCameraFOV(DefaultCameraFOV);
+            activated = true;
 
             SetAvatarVisibility(false);
         }
 
         public void Deactivate()
         {
-            hasCleanedCameras = false;
+            activated = false;
             Camera eyeCamera = GetEyeCamera();
 
             if (eyeCamera == null)
@@ -293,80 +360,23 @@ namespace Triquetra.FlatScreen
 
         public void SetAvatarVisibility(bool isVis)
         {
-            /* The scene paths here will likely need to be updated if an update changes any of these. */
+            /* The scene paths here will likely need to be updated if a game update changes any of these. */
+            if (playerBody == null)
+                playerBody = GameObject.Find("suit2/RiggedSuit.001");
+            if (playerLeftHand == null)
+                playerLeftHand = GameObject.Find("Controller (left)/newGlove/SWAT_glower_pivot.002");
+            if (playerRightHand == null)
+                playerRightHand = GameObject.Find("Controller (right)/newGlove/SWAT_glower_pivot.002");
 
             // body visiblity
-            GameObject.Find("suit2/RiggedSuit.001")?.SetActive(isVis);
+            Debug.Log($"[FlatScreen 2] Setting body vis to {isVis}");
+            playerBody.SetActive(isVis);
 
             // hands visibility
-            GameObject.Find("Controller (left)/newGlove/SWAT_glower_pivot.002")?.SetActive(isVis);
-            GameObject.Find("Controller (right)/newGlove/SWAT_glower_pivot.002")?.SetActive(isVis);
-        }
-
-        public void Update()
-        {
-            if (Input.GetKeyDown(KeyCode.F9))
-                showWindow = !showWindow;
-
-            if (!Enabled)
-                return;
-
-            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z))
-                ResetCameraRotation();
-
-            HighlightObject(targetedVRInteractable);
-
-            if (Input.GetMouseButtonDown(0)) // left mouse down
-            {
-                if (targetedVRInteractable != null && heldVRInteractable == null)
-                {
-                    Interactions.Interact(targetedVRInteractable);
-                    heldVRInteractable = targetedVRInteractable;
-                }
-            }
-            if (Input.GetMouseButtonUp(0)) // left mouse up
-            {
-                if (heldVRInteractable != null)
-                {
-                    Interactions.AntiInteract(heldVRInteractable);
-                    heldVRInteractable = null;
-                }
-            }
-
-            // scroll wheel
-            if (Input.mouseScrollDelta.y != 0)
-            {
-                if (Input.GetKey(KeyCode.LeftControl) || Input.GetMouseButton(1)) // zoom if ctrl/RMB
-                {
-                    float deltaFOV = Input.mouseScrollDelta.y < 0 ? 5 : -5;
-                    SetCameraFOV(Math.Min(Math.Max(GetCameraFOV() + deltaFOV, 30), 120));
-                }
-                else // otherwise, interact
-                {
-                    // Scrollables interactables
-                    VRTwistKnob twistKnob = targetedVRInteractable?.GetComponent<VRTwistKnob>();
-                    VRTwistKnobInt twistKnobInt = targetedVRInteractable?.GetComponent<VRTwistKnobInt>();
-                    VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
-                    VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
-
-                    if (twistKnob != null)
-                    {
-                        Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
-                    }
-                    else if (twistKnobInt != null)
-                    {
-                        Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                    }
-                    else if (lever != null)
-                    {
-                        Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                    }
-                    else if (throttle != null)
-                    {
-                        Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
-                    }
-                }
-            }
+            Debug.Log($"[FlatScreen 2] Setting LH vis to {isVis}");
+            playerLeftHand.SetActive(isVis);
+            Debug.Log($"[FlatScreen 2] Setting RH vis to {isVis}");
+            playerRightHand.SetActive(isVis);
         }
 
         MeshRenderer PreviouslyHighlightedInteractableRenderer;
@@ -465,50 +475,6 @@ namespace Triquetra.FlatScreen
                 parentParentImage;
         }
 
-        int frame = 0;
-        const int framesPerTick = 1 * 60;
-        const int miniTick = 5;
-        bool wasOnTeam = false;
-        public void FixedUpdate()
-        {
-            if (!Enabled)
-                return;
-
-            frame++;
-            if (frame % miniTick == 0) // every mini tick get the hovered object
-            {
-                GetHoveredObject();
-            }
-
-            if (frame >= framesPerTick)
-            {
-                frame = 0;
-                if (IsFlyingScene())
-                    Activate();
-
-                HideGloves();
-                CheckEndMission();
-
-                SetTrackingObject(cameraEyeGameObject);
-
-                VRInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
-
-                bool isOnTeam = VTOLMPSceneManager.instance?.localPlayer?.chosenTeam ?? false;
-                if (isOnTeam != wasOnTeam)
-                    Reclean();
-
-                wasOnTeam = isOnTeam;
-            }
-        }
-
-        public void LateUpdate()
-        {
-            if (!Enabled)
-                return;
-
-            MoveCamera();
-        }
-
         public float Sensitivity = 2f;
         public float RotationLimitX = 160f; // set to -1 to disable
         public float RotationLimitY = 89f; // set to -1 to disable
@@ -525,6 +491,7 @@ namespace Triquetra.FlatScreen
         }
 
         public GameObject cameraEyeGameObject;
+        public GameObject hmdCameraGameObject;
         public static float DefaultCameraFOV = 80f;
         private Vector2 cameraRotation = Vector2.zero;
         private const string xAxis = "Mouse X";
@@ -532,11 +499,6 @@ namespace Triquetra.FlatScreen
 
         public void MoveCamera()
         {
-            if (cameraEyeGameObject == null)
-                cameraEyeGameObject = GetEyeCameraGameObject();
-            if (cameraEyeGameObject == null)
-                return;
-
             if (Input.GetMouseButton(1))
             {
                 foreach (Camera camera in GetAllEyeCameras()) // move each camera because the current Eye Camera might be old and inactive
@@ -558,52 +520,159 @@ namespace Triquetra.FlatScreen
 
         public void ResetCameraRotation()
         {
-            if (cameraEyeGameObject == null)
-                cameraEyeGameObject = GetEyeCameraGameObject();
-            if (cameraEyeGameObject == null)
-                return;
-
             cameraEyeGameObject.transform.localRotation = Quaternion.identity;
             cameraRotation = Vector2.zero;
         }
 
         public void SetCameraFOV(float fov)
         {
-            if (cameraEyeGameObject == null)
-                cameraEyeGameObject = GetEyeCameraGameObject();
-            if (cameraEyeGameObject == null)
-                return;
-
             cameraEyeGameObject.GetComponent<Camera>().fieldOfView = fov;
+            hmdCameraGameObject.GetComponent<Camera>().fieldOfView = fov;
         }
         public float GetCameraFOV()
         {
-            if (cameraEyeGameObject == null)
-                cameraEyeGameObject = GetEyeCameraGameObject();
-            if (cameraEyeGameObject == null)
-                return DefaultCameraFOV;
-
             return cameraEyeGameObject.GetComponent<Camera>().fieldOfView;
         }
-        public void Awake()
+
+        public void Update()
         {
-            // TODO: bind to map/vehicle/player loaded event
-            SceneManager.activeSceneChanged += OnSceneChange;
-            Instance = this;
+            if (Input.GetKeyDown(KeyCode.F9))
+                showWindow = !showWindow;
+            
+            if (!TryUpdateCameraTracks())
+                return;
+
+            if (!Enabled)
+                return;
+
+
+            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z))
+                ResetCameraRotation();
+
+            HighlightObject(targetedVRInteractable);
+
+            Cursor.visible = !Input.GetMouseButton(1);
+
+            if (Input.GetMouseButtonDown(0)) // left mouse down
+            {
+                if (targetedVRInteractable != null && heldVRInteractable == null)
+                {
+                    Interactions.Interact(targetedVRInteractable);
+                    heldVRInteractable = targetedVRInteractable;
+                }
+            }
+            if (Input.GetMouseButtonUp(0)) // left mouse up
+            {
+                if (heldVRInteractable != null)
+                {
+                    Interactions.AntiInteract(heldVRInteractable);
+                    heldVRInteractable = null;
+                }
+            }
+
+            // scroll wheel
+            if (Input.mouseScrollDelta.y != 0)
+            {
+                if (targetedVRInteractable == null ||
+                    targetedVRInteractable.GetComponent<VRButton>() != null ||
+                    Input.GetKey(KeyCode.LeftControl) ||
+                    Input.GetMouseButton(1)) // zoom if not hovering over scrollable or if ctrl/RMB is being held
+                {
+                    float deltaFOV = Input.mouseScrollDelta.y < 0 ? 5 : -5;
+                    SetCameraFOV(Math.Min(Math.Max(GetCameraFOV() + deltaFOV, 30), 120));
+                }
+                else if (targetedVRInteractable != null) // otherwise, scrollable interact
+                {
+                    // Scrollables interactables
+                    VRTwistKnob twistKnob = targetedVRInteractable?.GetComponent<VRTwistKnob>();
+                    VRTwistKnobInt twistKnobInt = targetedVRInteractable?.GetComponent<VRTwistKnobInt>();
+                    VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
+                    VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
+                    VRIntUIScroller uiScroll = targetedVRInteractable?.GetComponent<VRIntUIScroller>();
+
+                    if (twistKnob != null)
+                    {
+                        Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
+                    }
+                    else if (twistKnobInt != null)
+                    {
+                        Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                    }
+                    else if (lever != null)
+                    {
+                        Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                    }
+                    else if (throttle != null)
+                    {
+                        Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
+                    }
+                    else if (uiScroll != null)
+                    {
+                        // TODO
+                    }
+                }
+            }
+        }
+
+        int frame = 0;
+        const int framesPerTick = 1 * 60;
+        const int miniTick = 5;
+        bool wasOnTeam = false;
+        public void FixedUpdate()
+        {
+            if (!Enabled)
+                return;
+
+            if (!TryUpdateCameraTracks())
+                return;
+
+                frame++;
+            if (frame % miniTick == 0) // every mini tick get the hovered object
+            {
+                GetHoveredObject();
+            }
+
+            if (frame >= framesPerTick)
+            {
+                frame = 0;
+                if (IsFlyingScene())
+                    Activate();
+
+                CheckEndMission();
+
+                SetTrackingObject(cameraEyeGameObject);
+
+                VRInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
+
+                bool isOnTeam = VTOLMPSceneManager.instance?.localPlayer?.chosenTeam ?? false;
+                if (isOnTeam != wasOnTeam)
+                    Reclean();
+
+                wasOnTeam = isOnTeam;
+            }
+        }
+
+        public void LateUpdate()
+        {
+            if (!Enabled)
+                return;
+
+            if (!TryUpdateCameraTracks())
+                return;
+
+            MoveCamera();
         }
 
         public void Reclean()
         {
-            hasCleanedCameras = false;
-            hasHiddenGloves = false;
+            activated = false;
             showEndScreenWindow = false;
             cameraEyeGameObject = null;
-            thirdPerson = false;
-        }
-        private void OnSceneChange(Scene scene1, Scene scene2)
-        {
-            Reclean();
-            ResetCameraRotation();
+            hmdCameraGameObject = null;
+            playerBody = null;
+            playerLeftHand = null;
+            playerRightHand = null;
+            viewIsSpec = false;
         }
 
         public void OnDestroy()
@@ -613,11 +682,6 @@ namespace Triquetra.FlatScreen
 
         public void GetHoveredObject()
         {
-            if (cameraEyeGameObject == null)
-                cameraEyeGameObject = GetEyeCameraGameObject();
-            if (cameraEyeGameObject == null)
-                return;
-
             // Logger.WriteLine($"Checking intersected VRInteractables");
 
             Camera camera = cameraEyeGameObject.GetComponent<Camera>();
@@ -654,68 +718,6 @@ namespace Triquetra.FlatScreen
         public IEnumerable<Camera> GetSpectatorCameras()
         {
             return GameObject.FindObjectsOfType<Camera>(true).Where(c => c.name == "FlybyCam" || c.name == "flybyHMCScam");
-        }
-
-        public static Camera GetEyeCamera()
-        {
-            IEnumerable<Camera> cameras = GameObject.FindObjectsOfType<Camera>(false).Where(c => c.name == "Camera (eye)" && c.isActiveAndEnabled).OrderByDescending(c => c.depth);
-            if (cameras.Any(x => x.gameObject?.layer == LayerMask.NameToLayer("MPBriefing")))
-            {
-                if (VTOLMPSceneManager.instance.localPlayer.chosenTeam)
-                {
-                    GameObject localAvatarObject = typeof(VTOLMPSceneManager)
-                        .GetField("localAvatarObj", BindingFlags.Instance | BindingFlags.NonPublic)?
-                        .GetValue(VTOLMPSceneManager.instance) as GameObject;
-                    if (localAvatarObject != null)
-                    {
-                        Camera localAvatarCam = localAvatarObject?.GetComponentInChildren<Camera>(false);
-                        if (localAvatarCam != null)
-                        {
-                            return localAvatarCam;
-                        }
-                    }
-                }
-            }
-            return cameras.FirstOrDefault();
-        }
-        public static GameObject GetEyeCameraGameObject()
-        {
-            return GetEyeCamera()?.gameObject;
-        }
-
-        public static IEnumerable<Camera> GetAllEyeCameras()
-        {
-            return GameObject.FindObjectsOfType<Camera>(false).Where(c => c.name == "Camera (eye)" && c.isActiveAndEnabled);
-        }
-
-        bool hasHiddenGloves = false;
-        private Vector2 scrollPosition;
-
-        public void HideGloves(bool active = false)
-        {
-            if (hasHiddenGloves)
-                return;
-            Camera eyeCamera = GetEyeCamera();
-
-            if (eyeCamera == null)
-                return;
-
-            Transform CamRig = eyeCamera.transform.parent;
-            Transform leftController = CamRig?.Find("Controller (left)");
-            Transform rightController = CamRig?.Find("Controller (right)");
-
-            // leftController.transform.position = eyeCamera.transform.position + (eyeCamera.transform.forward * 1.5f);
-            // rightController.transform.position = eyeCamera.transform.position + (eyeCamera.transform.forward * 1.5f);
-            leftController.gameObject.SetActive(active);
-            rightController.gameObject.SetActive(active);
-
-            hasHiddenGloves = true;
-        }
-
-        public void UnHideGloves()
-        {
-            hasHiddenGloves = false;
-            HideGloves(true);
         }
 
         public void CheckEndMission()
