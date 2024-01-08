@@ -1,17 +1,24 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
-using UnityEngine.XR;
+using System.Reflection;
 
-namespace Triquetra.FlatScreen2
+using UnityEngine;
+
+namespace muskit.FlatScreen2
 {
     public class FlatScreen2Plugin : VTOLMOD
     {
         private GameObject monoBehaviour;
+
+        protected static FlatScreen2Plugin instance;
+
+        public static void Write(string msg)
+        {
+            instance.Log(msg);
+        }
+
+        public FlatScreen2Plugin() : base()
+        {
+            instance = this;
+        }
 
         // This method is run once, when the Mod Loader is done initialising this game object
         public override void ModLoaded()

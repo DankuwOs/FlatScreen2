@@ -1,18 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Harmony;
+﻿using Harmony;
 
-namespace Triquetra.FlatScreen2
+using UnityEngine;
+
+namespace muskit.FlatScreen2
 {
-    [HarmonyPatch(typeof(FlightSceneManager), "InstantScenarioRestartRoutine")]
-    internal class FlightSceneManagerRestart
-    {
-        static void Postfix()
-        {
-            FlatScreen2MonoBehaviour.Instance?.Reclean();
-        }
-    }
+    //[HarmonyPatch(typeof(VRHead), nameof(VRHead.OnEnable))]
+    //internal class FlightSceneManagerRestart
+    //{
+    //    static void Postfix()
+    //    {
+    //        FlatScreen2Plugin.Write("Running post-patch...");
+    //        FlatScreen2MonoBehaviour.Instance?.RegrabPlayerObjects();
+    //    }
+    //}
 }

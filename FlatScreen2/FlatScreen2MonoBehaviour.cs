@@ -8,10 +8,12 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 using VTOLVR.Multiplayer;
-using Triquetra.FlatScreen.TrackIR;
 using System.Reflection;
 
-namespace Triquetra.FlatScreen2
+using Triquetra;
+using Triquetra.FlatScreen.TrackIR;
+
+namespace muskit.FlatScreen2
 {
     public class FlatScreen2MonoBehaviour : MonoBehaviour
     {
@@ -75,8 +77,9 @@ namespace Triquetra.FlatScreen2
                     }
                 }
             }
+            //FlatScreen2Plugin.Write($"finished populating eye camera list ({cameras.Count()})");
             var cam = cameras.FirstOrDefault();
-            Debug.Log($"[FlatScreen 2] using camera {cam.name}");
+            //FlatScreen2Plugin.Write($"using camera {cam?.name}");
             return cam;
         }
 
@@ -111,22 +114,23 @@ namespace Triquetra.FlatScreen2
         public void Awake()
         {
             // TODO: bind to map/vehicle/player loaded event
-            SceneManager.activeSceneChanged += OnSceneChange;
+            //SceneManager.activeSceneChanged += OnSceneChange;
             Instance = this;
+            VRHead.OnVRHeadChanged += VRHeadChange;
         }
 
-        private void OnSceneChange(Scene scene1, Scene scene2)
+        private void VRHeadChange()
         {
-            Reclean();
-            ResetCameraRotation();
+            FlatScreen2Plugin.Write("VRHeadChanged!");
+            RegrabPlayerObjects();
         }
 
         public void OnGUI()
         {
             if (showWindow)
-                windowRect = GUI.Window(405, windowRect, DoMainWindow, "FlatScreen2 Control Panel");
+                windowRect = GUI.Window(405, windowRect, DoMainWindow, "FlatScreen 2 Control Panel");
             if (showEndScreenWindow)
-                endScreenWindowRect = GUI.Window(406, endScreenWindowRect, DoEndScreenWindow, "FlatScreen2 End Screen");
+                endScreenWindowRect = GUI.Window(406, endScreenWindowRect, DoEndScreenWindow, "FlatScreen 2 End Screen");
         }
 
         public void ShowEndScreenWindow(EndMission endMission)
@@ -149,7 +153,7 @@ namespace Triquetra.FlatScreen2
             }
 
             // GUILayout.Label($"Completion Time: {endMission.metCompleteText?.text}");
-            // TODO: log
+            // TODO: show flight log
 
             if (GUILayout.Button("Restart Mission"))
             {
@@ -182,7 +186,7 @@ namespace Triquetra.FlatScreen2
 
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
             {
-                if (!TryUpdateCameraTracks())
+                if (cameraEyeGameObject != null || TryUpdateCameraTracks())
                 {
                     GUILayout.BeginHorizontal();
                     {
@@ -235,7 +239,7 @@ namespace Triquetra.FlatScreen2
 
                 if (GUILayout.Button("Fix Camera"))
                 {
-                    Reclean();
+                    RegrabPlayerObjects();
                 }
 
                 if (GUILayout.Button("View: " + (viewIsSpec ? "S-CAM" : "First Person")))
@@ -333,7 +337,9 @@ namespace Triquetra.FlatScreen2
         {
             if (activated)
                 return;
-            if (!TryUpdateCameraTracks())
+
+            RegrabPlayerObjects();
+            if (cameraEyeGameObject == null)
                 return;
 
             foreach (Camera specCam in GetSpectatorCameras())
@@ -368,15 +374,22 @@ namespace Triquetra.FlatScreen2
             if (playerRightHand == null)
                 playerRightHand = GameObject.Find("Controller (right)/newGlove/SWAT_glower_pivot.002");
 
-            // body visiblity
-            Debug.Log($"[FlatScreen 2] Setting body vis to {isVis}");
-            playerBody.SetActive(isVis);
+            try
+            {
+                // body visiblity
+                FlatScreen2Plugin.Write($"Setting body vis to {isVis}");
+                playerBody.SetActive(isVis);
 
-            // hands visibility
-            Debug.Log($"[FlatScreen 2] Setting LH vis to {isVis}");
-            playerLeftHand.SetActive(isVis);
-            Debug.Log($"[FlatScreen 2] Setting RH vis to {isVis}");
-            playerRightHand.SetActive(isVis);
+                // hands visibility
+                FlatScreen2Plugin.Write($"Setting lect hand vis to {isVis}");
+                playerLeftHand.SetActive(isVis);
+                FlatScreen2Plugin.Write($"Setting right hand vis to {isVis}");
+                playerRightHand.SetActive(isVis);
+            }
+            catch (NullReferenceException)
+            {
+                FlatScreen2Plugin.Write("WARNING: could not find reference to the previously-mentioned avatar component to set its visibility!");
+            }
         }
 
         MeshRenderer PreviouslyHighlightedInteractableRenderer;
@@ -517,7 +530,7 @@ namespace Triquetra.FlatScreen2
                 }
             }
         }
-
+        
         public void ResetCameraRotation()
         {
             cameraEyeGameObject.transform.localRotation = Quaternion.identity;
@@ -538,19 +551,19 @@ namespace Triquetra.FlatScreen2
         {
             if (Input.GetKeyDown(KeyCode.F9))
                 showWindow = !showWindow;
-            
-            if (!TryUpdateCameraTracks())
-                return;
 
             if (!Enabled)
                 return;
 
+            if (cameraEyeGameObject == null)
+                return;
 
             if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z))
                 ResetCameraRotation();
 
             HighlightObject(targetedVRInteractable);
 
+            // TODO: change to subtle cursor location indication
             Cursor.visible = !Input.GetMouseButton(1);
 
             if (Input.GetMouseButtonDown(0)) // left mouse down
@@ -574,7 +587,7 @@ namespace Triquetra.FlatScreen2
             if (Input.mouseScrollDelta.y != 0)
             {
                 if (targetedVRInteractable == null ||
-                    targetedVRInteractable.GetComponent<VRButton>() != null ||
+                    targetedVRInteractable?.GetComponent<VRButton>() != null ||
                     Input.GetKey(KeyCode.LeftControl) ||
                     Input.GetMouseButton(1)) // zoom if not hovering over scrollable or if ctrl/RMB is being held
                 {
@@ -623,10 +636,11 @@ namespace Triquetra.FlatScreen2
             if (!Enabled)
                 return;
 
-            if (!TryUpdateCameraTracks())
+            if (cameraEyeGameObject == null)
                 return;
 
-                frame++;
+            frame++;
+
             if (frame % miniTick == 0) // every mini tick get the hovered object
             {
                 GetHoveredObject();
@@ -646,7 +660,7 @@ namespace Triquetra.FlatScreen2
 
                 bool isOnTeam = VTOLMPSceneManager.instance?.localPlayer?.chosenTeam ?? false;
                 if (isOnTeam != wasOnTeam)
-                    Reclean();
+                    RegrabPlayerObjects();
 
                 wasOnTeam = isOnTeam;
             }
@@ -657,14 +671,12 @@ namespace Triquetra.FlatScreen2
             if (!Enabled)
                 return;
 
-            if (!TryUpdateCameraTracks())
-                return;
-
             MoveCamera();
         }
 
-        public void Reclean()
+        public void RegrabPlayerObjects()
         {
+            FlatScreen2Plugin.Write("Regrabbing player objects...");
             activated = false;
             showEndScreenWindow = false;
             cameraEyeGameObject = null;
@@ -673,12 +685,22 @@ namespace Triquetra.FlatScreen2
             playerLeftHand = null;
             playerRightHand = null;
             viewIsSpec = false;
+
+            if (TryUpdateCameraTracks())
+            {
+                FlatScreen2Plugin.Write($"    Camera grabbed: {cameraEyeGameObject}");
+                ResetCameraRotation();
+            }
+            else
+            {
+                FlatScreen2Plugin.Write($"    Could not find camera!");
+            }
         }
 
-        public void OnDestroy()
-        {
-            SceneManager.activeSceneChanged -= OnSceneChange;
-        }
+        //public void OnDestroy()
+        //{
+        //    SceneManager.activeSceneChanged -= OnSceneChange;
+        //}
 
         public void GetHoveredObject()
         {
