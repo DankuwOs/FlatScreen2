@@ -374,6 +374,7 @@ namespace muskit.FlatScreen2
             if (playerRightHand == null)
                 playerRightHand = GameObject.Find("Controller (right)/newGlove/SWAT_glower_pivot.002");
 
+            // TODO: hide helmet if in MP briefing room
             try
             {
                 // body visiblity
@@ -388,7 +389,7 @@ namespace muskit.FlatScreen2
             }
             catch (NullReferenceException)
             {
-                FlatScreen2Plugin.Write("WARNING: could not find reference to the previously-mentioned avatar component to set its visibility!");
+                FlatScreen2Plugin.Write("    WARNING: no reference to the avatar component to set its visibility!");
             }
         }
 
@@ -514,20 +515,17 @@ namespace muskit.FlatScreen2
         {
             if (Input.GetMouseButton(1))
             {
-                foreach (Camera camera in GetAllEyeCameras()) // move each camera because the current Eye Camera might be old and inactive
-                {
-                    cameraRotation.x += Input.GetAxis(xAxis) * Sensitivity;
-                    cameraRotation.y += Input.GetAxis(yAxis) * Sensitivity;
-                    if (RotationLimitX > 0)
-                        cameraRotation.x = Mathf.Clamp(cameraRotation.x, -RotationLimitX, RotationLimitX);
-                    if (RotationLimitY > 0)
-                        cameraRotation.y = Mathf.Clamp(cameraRotation.y, -RotationLimitY, RotationLimitY);
-                    var xQuat = Quaternion.AngleAxis(cameraRotation.x, Vector3.up);
-                    var yQuat = Quaternion.AngleAxis(cameraRotation.y, Vector3.left);
+                cameraRotation.x += Input.GetAxis(xAxis) * Sensitivity;
+                cameraRotation.y += Input.GetAxis(yAxis) * Sensitivity;
+                if (RotationLimitX > 0)
+                    cameraRotation.x = Mathf.Clamp(cameraRotation.x, -RotationLimitX, RotationLimitX);
+                if (RotationLimitY > 0)
+                    cameraRotation.y = Mathf.Clamp(cameraRotation.y, -RotationLimitY, RotationLimitY);
+                var xQuat = Quaternion.AngleAxis(cameraRotation.x, Vector3.up);
+                var yQuat = Quaternion.AngleAxis(cameraRotation.y, Vector3.left);
 
-                    camera.transform.localRotation = xQuat * yQuat; //Quaternions seem to rotate more consistently than EulerAngles. Sensitivity seemed to change slightly at certain degrees using Euler.
-                                                                                 //transform.localEulerAngles = new Vector3(-rotation.y, rotation.x, 0);
-                }
+                cameraEyeGameObject.transform.localRotation = xQuat * yQuat; //Quaternions seem to rotate more consistently than EulerAngles. Sensitivity seemed to change slightly at certain degrees using Euler.
+                                                                                //transform.localEulerAngles = new Vector3(-rotation.y, rotation.x, 0);
             }
         }
         
