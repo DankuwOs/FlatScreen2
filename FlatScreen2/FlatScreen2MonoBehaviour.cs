@@ -1,14 +1,13 @@
 ﻿using System;
+using System.Reflection;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 using VTOLVR.Multiplayer;
-using System.Reflection;
 
 using Triquetra;
 using Triquetra.FlatScreen.TrackIR;
@@ -18,11 +17,10 @@ namespace muskit.FlatScreen2
     public class FlatScreen2MonoBehaviour : MonoBehaviour
     {
         // https://vtolvr-mods.com/viewbugs/zj7ylyrf/
-        // TODO: Scrollable scrollbars
+        // TODO: Back button (ESC)
+        // TODO: Better ImGui for restarting/ending mission
         // TODO?: WASDEQ controls
-        // TODO?: Better ImGui for restarting/ending mission
         // TODO?: Bobblehead gets a VRInteractable
-        // TODO?: Back button (ESC)
 
         private Rect windowRect = new Rect(25, 25, 350, 500);
         private bool showWindow = true;
@@ -113,8 +111,6 @@ namespace muskit.FlatScreen2
 
         public void Awake()
         {
-            // TODO: bind to map/vehicle/player loaded event
-            //SceneManager.activeSceneChanged += OnSceneChange;
             Instance = this;
             VRHead.OnVRHeadChanged += VRHeadChange;
         }
@@ -183,6 +179,7 @@ namespace muskit.FlatScreen2
             Enabled = GUILayout.Toggle(Enabled, " Enabled");
 
             GUI.enabled = Enabled;
+            if (!Enabled) return;
 
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
             {
@@ -222,6 +219,12 @@ namespace muskit.FlatScreen2
                         GUILayout.Label("[None]");
                 }
                 GUILayout.EndHorizontal();
+
+                if (targetedVRInteractable != null)
+                    foreach (var comp in targetedVRInteractable?.GetComponents<MonoBehaviour>())
+                    {
+                        GUILayout.Label(comp.GetType().Name);
+                    }
 
                 GUILayout.BeginHorizontal();
                 {
@@ -604,13 +607,16 @@ namespace muskit.FlatScreen2
                 }
             }
 
+            // TODO: UI scrollbar dragging
+
             // scroll wheel
             if (Input.mouseScrollDelta.y != 0)
             {
-                if (targetedVRInteractable == null ||
-                    targetedVRInteractable?.GetComponent<VRButton>() != null ||
-                    Input.GetKey(KeyCode.LeftControl) ||
-                    Input.GetMouseButton(1)) // zoom if not hovering over scrollable or if ctrl/RMB is being held
+                if (Input.GetMouseButton(1) || // zoom if not hovering over scrollable or if ctrl/RMB is being held
+                    targetedVRInteractable == null ||
+                    targetedVRInteractable.GetComponent<VRButton>() != null ||
+                    targetedVRInteractable.GetComponent<VRInteractableUIButton>() != null ||
+                    targetedVRInteractable.GetComponent<VRIHoverToggle>() != null)
                 {
                     float deltaFOV = Input.mouseScrollDelta.y < 0 ? 5 : -5;
                     SetCameraFOV(Math.Min(Math.Max(GetCameraFOV() + deltaFOV, 30), 120));
@@ -642,7 +648,7 @@ namespace muskit.FlatScreen2
                     }
                     else if (uiScroll != null)
                     {
-                        // TODO
+                        uiScroll.scrollRect.normalizedPosition += 0.1f * Input.mouseScrollDelta;
                     }
                 }
             }
