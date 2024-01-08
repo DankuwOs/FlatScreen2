@@ -307,15 +307,19 @@ namespace muskit.FlatScreen2
         }
 
         /// <summary>
-        /// Update this instance's camera variables. Returns true if successful.
+        /// Update this instance's camera variables.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>If the main camera was grabbed successfully.</returns>
         public bool TryUpdateCameraTracks()
         {
             if (cameraEyeGameObject == null)
             {
                 cameraEyeGameObject = GetEyeCamera()?.gameObject;
-                hmdCameraGameObject = GameObject.Find("Camera HMD HUD");
+                cameraHMDGameObject = GameObject.Find("Camera HMD HUD");
+                cameraHelmetGameObject = GameObject.Find("Camera (eye) Helmet");
+
+                if (cameraHelmetGameObject != null)
+                    cameraHelmetGameObject.GetComponent<Camera>().fieldOfView = 20;
             }
 
             return cameraEyeGameObject != null;
@@ -356,10 +360,6 @@ namespace muskit.FlatScreen2
         public void Deactivate()
         {
             activated = false;
-            Camera eyeCamera = GetEyeCamera();
-
-            if (eyeCamera == null)
-                return;
 
             SetAvatarVisibility(true);
         }
@@ -526,7 +526,9 @@ namespace muskit.FlatScreen2
         }
 
         public GameObject cameraEyeGameObject;
-        public GameObject hmdCameraGameObject;
+        public GameObject cameraHMDGameObject;
+        public GameObject cameraHelmetGameObject;
+
         public static float DefaultCameraFOV = 80f;
         private Vector2 cameraRotation = Vector2.zero;
         private const string xAxis = "Mouse X";
@@ -559,7 +561,7 @@ namespace muskit.FlatScreen2
         public void SetCameraFOV(float fov)
         {
             cameraEyeGameObject.GetComponent<Camera>().fieldOfView = fov;
-            hmdCameraGameObject.GetComponent<Camera>().fieldOfView = fov;
+            cameraHMDGameObject.GetComponent<Camera>().fieldOfView = fov;
         }
         public float GetCameraFOV()
         {
@@ -699,7 +701,7 @@ namespace muskit.FlatScreen2
             activated = false;
             showEndScreenWindow = false;
             cameraEyeGameObject = null;
-            hmdCameraGameObject = null;
+            cameraHMDGameObject = null;
             playerBody = null;
             playerLeftHand = null;
             playerRightHand = null;
