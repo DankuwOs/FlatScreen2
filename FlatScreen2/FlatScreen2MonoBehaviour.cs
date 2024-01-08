@@ -374,7 +374,28 @@ namespace muskit.FlatScreen2
             if (playerRightHand == null)
                 playerRightHand = GameObject.Find("Controller (right)/newGlove/SWAT_glower_pivot.002");
 
-            // TODO: hide helmet if in MP briefing room
+            // helmet if in MP briefing room
+            var teamSelectAv = GameObject.Find("TeamSelectSpawn/BriefingAvatar");
+            if (teamSelectAv != null)
+            {
+                teamSelectAv.transform
+                    .Find("Local/CameraRigParent/[CameraRig]/Camera (eye)/Helmet/hqh")
+                    .gameObject.SetActive(isVis);
+            }
+
+            var seshPms = FindObjectsOfType<PlayerModelSync>();
+            foreach (var pms in seshPms)
+            {
+                if (pms.isMine && pms.gameObject.name.Contains("BriefingAvatar"))
+                {
+                    pms.transform
+                    .Find("Local/CameraRigParent/[CameraRig]/Camera (eye)/Helmet/hqh")
+                    .gameObject.SetActive(isVis);
+                    break;
+                }
+            }
+
+            // pilot avatar in aircraft
             try
             {
                 // body visiblity
