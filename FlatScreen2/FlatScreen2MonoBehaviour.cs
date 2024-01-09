@@ -1,4 +1,4 @@
-﻿using System;
+﻿
 using System.Reflection;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,10 +36,12 @@ namespace muskit.FlatScreen2
         public VRInteractable heldVRInteractable;
         public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
 
-        private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
-        private bool showEndScreenWindow = false;
-        private bool viewIsSpec = false;
+        private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 300, Screen.height / 2 - 400, 600, 800);
+        private bool showEndMissionWindow = false;
+        private bool endMissionWindowAutoShown = false;
         EndMission endMission;
+
+        private bool viewIsSpec = false;
 
         // player avatar
         private GameObject playerBody = null;
@@ -116,6 +118,9 @@ namespace muskit.FlatScreen2
         private void VRHeadChange()
         {
             FlatScreen2Plugin.Write("VRHeadChanged!");
+            showEndMissionWindow = false;
+            endMissionWindowAutoShown = false;
+
             currentFOV = DEFAULT_FOV;
             RegrabTracks();
         }
@@ -124,46 +129,46 @@ namespace muskit.FlatScreen2
         {
             if (showWindow)
                 windowRect = GUI.Window(405, windowRect, GUIMainWindow, "FlatScreen 2 Control Panel");
-            if (showEndScreenWindow)
+            if (showEndMissionWindow)
                 endMissionWindowRect = GUI.Window(406, endMissionWindowRect, GUIEndMissionWindow, "FlatScreen 2 End Mission");
         }
 
-        public void ShowEndMissionWindow(EndMission endMission)
+        public void ToggleEndMissionWindow()
         {
-            // recenter just in case
-            endMissionWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
-            showEndScreenWindow = true;
-            this.endMission = endMission;
-            GUI.FocusWindow(406);
+            showEndMissionWindow = !showEndMissionWindow;
+            if (showEndMissionWindow)
+                GUI.FocusWindow(406);
         }
 
         private void GUIEndMissionWindow(int id)
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
 
-            if (endMission == null)
-            {
-                showEndScreenWindow = false;
-                return;
-            }
-
             // GUILayout.Label($"Completion Time: {endMission.metCompleteText?.text}");
-            // TODO: show flight log
 
             if (GUILayout.Button("Restart Mission"))
             {
                 endMission?.ReloadSceneButton();
-                showEndScreenWindow = false;
+                showEndMissionWindow = false;
             }
             if (GUILayout.Button("Finish Mission"))
             {
                 endMission?.ReturnToMainButton();
-                showEndScreenWindow = false;
+                showEndMissionWindow = false;
             }
+
+            // flight log
+            var stringBuilder = new System.Text.StringBuilder();
+            foreach (FlightLogger.LogEntry logEntry in FlightLogger.GetLog())
+                stringBuilder.AppendLine(logEntry.timestampedMessage);
+            GUI.TextArea(new Rect(25, 80, 550, 600), stringBuilder.ToString());
+
+            GUILayout.Space(650);
+
             if (QuicksaveManager.quickloadAvailable && GUILayout.Button("Load Quicksave"))
             {
                 endMission?.Quickload();
-                showEndScreenWindow = false;
+                showEndMissionWindow = false;
             }
         }
 
@@ -457,7 +462,6 @@ namespace muskit.FlatScreen2
         public void RegrabTracks()
         {
             FlatScreen2Plugin.Write("Regrabbing tracked player objects...");
-            showEndScreenWindow = false;
             cameraEyeGameObject = null;
             cameraHMDGameObject = null;
             playerBody = null;
@@ -616,17 +620,6 @@ namespace muskit.FlatScreen2
                 parentParentImage;
         }
 
-        public void CheckEndMission()
-        {
-            if (showEndScreenWindow)
-                return;
-            EndMission endMission = GameObject.FindObjectOfType<EndMission>(false);
-            if (endMission == null || endMission.enabled == false)
-                return;
-
-            if (endMission.endScreenObject?.activeSelf == true)
-                ShowEndMissionWindow(endMission);
-
         public void Update()
         {
             if (Input.GetKeyDown(KeyCode.F9))
@@ -634,6 +627,9 @@ namespace muskit.FlatScreen2
 
             if (!flatScreenEnabled)
                 return;
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+                ToggleEndMissionWindow();
 
             if (cameraEyeGameObject == null)
                 return;
@@ -737,10 +733,20 @@ namespace muskit.FlatScreen2
             if (frameTick >= FRAMES_PER_TICK) // every tick
             {
                 frameTick = 0;
-
-                Debug.Log($"End mission: {endMission}");
-                if (endMission == null || endMission.enabled == false)
-                    CheckEndMission();
+                
+                if (endMission == null && !endMissionWindowAutoShown)
+                {
+                    // check if mission has ended
+                    EndMission endMission = GameObject.FindObjectOfType<EndMission>(false);
+                    if (endMission != null && endMission.endScreenObject?.activeSelf == true)
+                    {
+                        FlatScreen2Plugin.Write("Ended mission!! Showing mission end window...");
+                        this.endMission = endMission;
+                        showEndMissionWindow = false;
+                        ToggleEndMissionWindow();
+                        endMissionWindowAutoShown = true;
+                    }
+                }
 
                 SetTrackingObject(cameraEyeGameObject);
 
@@ -758,7 +764,7 @@ namespace muskit.FlatScreen2
         public void OnDestroy()
         {
             showWindow = false;
-            showEndScreenWindow = false;
+            showEndMissionWindow = false;
 
             if (flatScreenEnabled)
                 VRHead.OnVRHeadChanged -= VRHeadChange;
