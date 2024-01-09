@@ -1,4 +1,4 @@
-# FlatScreen2
+# FlatScreen 2
 A *VTOL VR* mod that removes the VR, allowing you to play without a VR headset.
 
 This is an extension of the original [FlatScreen mod by frdhog](https://vtolvr-mods.com/mod/zj7ylyrf/).
@@ -8,5 +8,5 @@ This is an extension of the original [FlatScreen mod by frdhog](https://vtolvr-m
 ## Changes from original mod (not exhaustive)
 - new mouse controls
 - avatar body hiding
-- NVG/visor is visible
+- HMCS and NVG fixes
 - various minor bug/QoL fixes
