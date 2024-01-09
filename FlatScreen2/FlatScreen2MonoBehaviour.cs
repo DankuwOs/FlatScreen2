@@ -19,19 +19,21 @@ namespace muskit.FlatScreen2
         // https://vtolvr-mods.com/viewbugs/zj7ylyrf/
         // TODO: Back button (ESC)
         // TODO: Better ImGui for restarting/ending mission
+        // TODO: Usable with VR headset active (disable VR to control cameras)
         // TODO?: WASDEQ controls
         // TODO?: Bobblehead gets a VRInteractable
 
         private Rect windowRect = new Rect(25, 25, 350, 500);
         private bool showWindow = true;
-        private bool flatScreenEnabled = false;
         public TrackIRTransformer TrackIRTransformer { get; private set; }
+
+        public bool flatScreenEnabled { get; private set; } = false;
 
         public VRInteractable targetedVRInteractable;
         public VRInteractable heldVRInteractable;
         public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
 
-        private Rect endScreenWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
+        private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
         private bool showEndScreenWindow = false;
         private bool viewIsSpec = false;
         EndMission endMission;
@@ -57,7 +59,10 @@ namespace muskit.FlatScreen2
 
         public static Camera GetEyeCamera()
         {
-            IEnumerable<Camera> cameras = GetAllEyeCameras().OrderByDescending(c => c.depth);
+            IEnumerable<Camera> cameras = GameObject.FindObjectsOfType<Camera>(false)
+                .Where(c => c.name == "Camera (eye)" && c.isActiveAndEnabled)
+                .OrderByDescending(c => c.depth);
+
             if (cameras.Any(x => x.gameObject?.layer == LayerMask.NameToLayer("MPBriefing")))
             {
                 if (VTOLMPSceneManager.instance.localPlayer.chosenTeam)
@@ -81,64 +86,41 @@ namespace muskit.FlatScreen2
             return cam;
         }
 
-        public static IEnumerable<Camera> GetAllEyeCameras()
+        public static IEnumerable<Camera> GetSpectatorCameras()
         {
-            return GameObject.FindObjectsOfType<Camera>(false).Where(c => c.name == "Camera (eye)" && c.isActiveAndEnabled);
-        }
-
-        public bool Enabled
-        {
-            get
-            {
-                return flatScreenEnabled;
-            }
-            set
-            {
-                if (flatScreenEnabled != value)
-                {
-                    if (value) // just re-enabled
-                        CheckEndMission();
-                    else // just disabled
-                    {
-                        ResetCameraRotation();
-                        Deactivate();
-                    }
-
-                    flatScreenEnabled = value;
-                }
-            }
+            return GameObject.FindObjectsOfType<Camera>(true).Where(c => c.name == "FlybyCam" || c.name == "flybyHMCScam");
         }
 
         public void Awake()
         {
             Instance = this;
-            VRHead.OnVRHeadChanged += VRHeadChange;
         }
 
         private void VRHeadChange()
         {
             FlatScreen2Plugin.Write("VRHeadChanged!");
-            RegrabPlayerObjects();
+            currentFOV = DEFAULT_FOV;
+            RegrabTracks();
         }
 
         public void OnGUI()
         {
             if (showWindow)
-                windowRect = GUI.Window(405, windowRect, DoMainWindow, "FlatScreen 2 Control Panel");
+                windowRect = GUI.Window(405, windowRect, GUIMainWindow, "FlatScreen 2 Control Panel");
             if (showEndScreenWindow)
-                endScreenWindowRect = GUI.Window(406, endScreenWindowRect, DoEndScreenWindow, "FlatScreen 2 End Screen");
+                endMissionWindowRect = GUI.Window(406, endMissionWindowRect, GUIEndMissionWindow, "FlatScreen 2 End Mission");
         }
 
-        public void ShowEndScreenWindow(EndMission endMission)
+        public void ShowEndMissionWindow(EndMission endMission)
         {
             // recenter just in case
-            endScreenWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
+            endMissionWindowRect = new Rect(Screen.width / 2 - 80, Screen.height / 2 - 150, 300, 160);
             showEndScreenWindow = true;
             this.endMission = endMission;
             GUI.FocusWindow(406);
         }
 
-        private void DoEndScreenWindow(int id)
+        private void GUIEndMissionWindow(int id)
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
 
@@ -168,30 +150,33 @@ namespace muskit.FlatScreen2
             }
         }
 
-        private Vector2 scrollPosition;
-        void DoMainWindow(int windowID)
+        private Vector2 mainWinScrollPos;
+        void GUIMainWindow(int windowID)
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
 
             GUILayout.Label("Press F9 to show/hide this window");
             GUILayout.Space(20);
 
-            Enabled = GUILayout.Toggle(Enabled, " Enabled");
+            if (!flatScreenEnabled)
+            {
+                flatScreenEnabled = GUILayout.Button("Activate (cannot revert!!)");
+                if (flatScreenEnabled) // just enabled
+                    Activate();
 
-            GUI.enabled = Enabled;
-            if (!Enabled) return;
+                return;
+            }
 
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition);
+            mainWinScrollPos = GUILayout.BeginScrollView(mainWinScrollPos);
             {
                 if (cameraEyeGameObject != null || TryUpdateCameraTracks())
                 {
                     GUILayout.BeginHorizontal();
                     {
-                        float FOV = GetCameraFOV();
-                        float newFOV = FOV;
-                        GUILayout.Label($"FOV: {FOV}");
-                        newFOV = Mathf.Round(GUILayout.HorizontalSlider(FOV, 30f, 120f));
-                        if (newFOV != FOV)
+                        GUILayout.Label($"FOV: {currentFOV}");
+                        int newFOV = (int)Mathf.Round(GUILayout.HorizontalSlider(currentFOV, 30f, 120f));
+
+                        if (newFOV != currentFOV)
                             SetCameraFOV(newFOV);
                     }
                     GUILayout.EndHorizontal();
@@ -240,9 +225,9 @@ namespace muskit.FlatScreen2
 
                 GUILayout.Space(20);
 
-                if (GUILayout.Button("Fix Camera"))
+                if (GUILayout.Button("Reset Camera"))
                 {
-                    RegrabPlayerObjects();
+                    RegrabTracks();
                 }
 
                 if (GUILayout.Button("View: " + (viewIsSpec ? "S-CAM" : "First Person")))
@@ -309,25 +294,6 @@ namespace muskit.FlatScreen2
             GUILayout.EndScrollView();
         }
 
-        /// <summary>
-        /// Update this instance's camera variables.
-        /// </summary>
-        /// <returns>If the main camera was grabbed successfully.</returns>
-        public bool TryUpdateCameraTracks()
-        {
-            if (cameraEyeGameObject == null)
-            {
-                cameraEyeGameObject = GetEyeCamera()?.gameObject;
-                cameraHMDGameObject = GameObject.Find("Camera HMD HUD");
-                cameraHelmetGameObject = GameObject.Find("Camera (eye) Helmet");
-
-                if (cameraHelmetGameObject != null)
-                    cameraHelmetGameObject.GetComponent<Camera>().fieldOfView = 20;
-            }
-
-            return cameraEyeGameObject != null;
-        }
-
         public void SetTrackingObject(GameObject trackingObject)
         {
             if (TrackIRTransformer == null)
@@ -339,32 +305,13 @@ namespace muskit.FlatScreen2
             TrackIRTransformer.trackedObject = trackingObject?.transform;
         }
 
-        bool activated = false;
         public void Activate()
         {
-            if (activated)
-                return;
+            VRHead.OnVRHeadChanged += VRHeadChange;
 
-            RegrabPlayerObjects();
-            if (cameraEyeGameObject == null)
-                return;
+            VRUtils.DisableVR();
 
-            foreach (Camera specCam in GetSpectatorCameras())
-            {
-                specCam.depth = -6;
-            }
-            
-            SetCameraFOV(DefaultCameraFOV);
-            activated = true;
-
-            SetAvatarVisibility(false);
-        }
-
-        public void Deactivate()
-        {
-            activated = false;
-
-            SetAvatarVisibility(true);
+            RegrabTracks();
         }
 
         public void SetAvatarVisibility(bool isVis)
@@ -382,7 +329,7 @@ namespace muskit.FlatScreen2
             if (teamSelectAv != null)
             {
                 teamSelectAv.transform
-                    .Find("Local/CameraRigParent/[CameraRig]/Camera (eye)/Helmet/hqh")
+                    .Find("Local/CameraRigParent/[CameraRig]/Camera (eye)/Helmet/hqh")?
                     .gameObject.SetActive(isVis);
             }
 
@@ -397,24 +344,296 @@ namespace muskit.FlatScreen2
                     break;
                 }
             }
+            
+            // body visiblity
+            FlatScreen2Plugin.Write($"Setting body ({playerBody}) vis to {isVis}");
+            playerBody?.SetActive(isVis);
 
-            // pilot avatar in aircraft
-            try
-            {
-                // body visiblity
-                FlatScreen2Plugin.Write($"Setting body vis to {isVis}");
-                playerBody.SetActive(isVis);
+            // hands visibility
+            FlatScreen2Plugin.Write($"Setting left hand ({playerLeftHand}) vis to {isVis}");
+            playerLeftHand?.SetActive(isVis);
+            FlatScreen2Plugin.Write($"Setting right hand ({playerRightHand}) vis to {isVis}");
+            playerRightHand?.SetActive(isVis);
+            FlatScreen2Plugin.Write("    WARNING: no reference to the avatar component to set its visibility!");
+        }
 
-                // hands visibility
-                FlatScreen2Plugin.Write($"Setting lect hand vis to {isVis}");
-                playerLeftHand.SetActive(isVis);
-                FlatScreen2Plugin.Write($"Setting right hand vis to {isVis}");
-                playerRightHand.SetActive(isVis);
-            }
-            catch (NullReferenceException)
+        public float Sensitivity = 2f;
+        public float RotationLimitX = 160f; // set to -1 to disable
+        public float RotationLimitY = 89f; // set to -1 to disable
+
+        public bool LimitXRotation
+        {
+            get { return RotationLimitX >= 0; }
+            set { RotationLimitX = value ? 160f : -1f; }
+        }
+        public bool LimitYRotation
+        {
+            get { return RotationLimitY >= 0; }
+            set { RotationLimitY = value ? 89f : -1f; }
+        }
+
+        public GameObject cameraEyeGameObject;
+        public GameObject cameraHMDGameObject;
+        public GameObject cameraHelmetGameObject;
+
+        public const int DEFAULT_FOV = 75;
+        int currentFOV = DEFAULT_FOV;
+        private Vector2 cameraRotation = Vector2.zero;
+        private const string xAxis = "Mouse X";
+        private const string yAxis = "Mouse Y";
+
+        public void MoveCamera()
+        {
+            if (Input.GetMouseButton(1))
             {
-                FlatScreen2Plugin.Write("    WARNING: no reference to the avatar component to set its visibility!");
+                cameraRotation.x += Input.GetAxis(xAxis) * Sensitivity;
+                cameraRotation.y += Input.GetAxis(yAxis) * Sensitivity;
+                if (RotationLimitX > 0)
+                    cameraRotation.x = Mathf.Clamp(cameraRotation.x, -RotationLimitX, RotationLimitX);
+                if (RotationLimitY > 0)
+                    cameraRotation.y = Mathf.Clamp(cameraRotation.y, -RotationLimitY, RotationLimitY);
+                var xQuat = Quaternion.AngleAxis(cameraRotation.x, Vector3.up);
+                var yQuat = Quaternion.AngleAxis(cameraRotation.y, Vector3.left);
+
+                cameraEyeGameObject.transform.localRotation = xQuat * yQuat; //Quaternions seem to rotate more consistently than EulerAngles. Sensitivity seemed to change slightly at certain degrees using Euler.
+                                                                                //transform.localEulerAngles = new Vector3(-rotation.y, rotation.x, 0);
             }
+        }
+        
+        public void ResetCameraRotation()
+        {
+            cameraEyeGameObject.transform.localRotation = Quaternion.identity;
+            cameraRotation = Vector2.zero;
+        }
+
+        public void SetCameraFOV(int fov)
+        {
+            fov = Mathf.Clamp(fov, 30, 120);
+            currentFOV = fov;
+
+            if (cameraEyeGameObject != null)
+                cameraEyeGameObject.GetComponent<Camera>().fieldOfView = fov;
+            if (cameraHMDGameObject != null)
+                cameraHMDGameObject.GetComponent<Camera>().fieldOfView = fov;
+        }
+        public float GetCameraFOV()
+        {
+            return cameraEyeGameObject.GetComponent<Camera>().fieldOfView;
+        }
+
+        /// <summary>
+        /// Update this instance's camera variables.
+        /// </summary>
+        /// <returns>If the main camera was grabbed successfully.</returns>
+        public bool TryUpdateCameraTracks()
+        {
+            if (cameraEyeGameObject == null)
+            {
+                cameraEyeGameObject = GetEyeCamera()?.gameObject;
+
+                if (cameraEyeGameObject != null)
+                {
+                    cameraHMDGameObject = cameraEyeGameObject.transform.Find("Camera HMD HUD")?.gameObject;
+                    cameraHelmetGameObject = cameraEyeGameObject.transform.Find("Camera (eye) Helmet")?.gameObject;
+                }
+
+                if (cameraHelmetGameObject != null)
+                    cameraHelmetGameObject.GetComponent<Camera>().fieldOfView = 20;
+            }
+
+            return cameraEyeGameObject != null;
+        }
+
+        public void RegrabTracks()
+        {
+            FlatScreen2Plugin.Write("Regrabbing tracked player objects...");
+            showEndScreenWindow = false;
+            cameraEyeGameObject = null;
+            cameraHMDGameObject = null;
+            playerBody = null;
+            playerLeftHand = null;
+            playerRightHand = null;
+            viewIsSpec = false;
+
+            if (TryUpdateCameraTracks())
+            {
+                FlatScreen2Plugin.Write($"    Camera grabbed: {cameraEyeGameObject}");
+                ResetCameraRotation();
+                SetCameraFOV(currentFOV);
+            }
+            else
+            {
+                FlatScreen2Plugin.Write($"    Could not find camera!");
+            }
+
+            foreach (Camera specCam in GetSpectatorCameras())
+            {
+                FlatScreen2Plugin.Write($"    SpecCam ({specCam.name}) depth: {specCam.depth}");
+                specCam.depth = -6;
+            }
+
+            SetAvatarVisibility(false);
+        }
+
+        public void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.F9))
+                showWindow = !showWindow;
+
+            if (!flatScreenEnabled)
+                return;
+
+            if (cameraEyeGameObject == null)
+                return;
+
+            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z))
+                ResetCameraRotation();
+
+            HighlightObject(targetedVRInteractable);
+
+            // TODO: change to subtle cursor location indication
+            Cursor.visible = !Input.GetMouseButton(1);
+
+            if (Input.GetMouseButtonDown(0)) // left mouse down
+            {
+                if (targetedVRInteractable != null && heldVRInteractable == null)
+                {
+                    Interactions.Interact(targetedVRInteractable);
+                    heldVRInteractable = targetedVRInteractable;
+                }
+            }
+            if (Input.GetMouseButtonUp(0)) // left mouse up
+            {
+                if (heldVRInteractable != null)
+                {
+                    Interactions.AntiInteract(heldVRInteractable);
+                    heldVRInteractable = null;
+                }
+            }
+
+            // TODO: UI scrollbar dragging
+
+            // scroll wheel
+            if (Input.mouseScrollDelta.y != 0)
+            {
+                if (Input.GetMouseButton(1) || // zoom if not hovering over scrollable or if ctrl/RMB is being held
+                    targetedVRInteractable == null ||
+                    targetedVRInteractable.GetComponent<VRButton>() != null ||
+                    targetedVRInteractable.GetComponent<VRInteractableUIButton>() != null ||
+                    targetedVRInteractable.GetComponent<VRIHoverToggle>() != null)
+                {
+                    int newFOV = currentFOV + (Input.mouseScrollDelta.y < 0 ? 5 : -5);
+                    SetCameraFOV(newFOV);
+                }
+                else if (targetedVRInteractable != null) // otherwise, scrollable interact
+                {
+                    // Scrollables interactables
+                    VRTwistKnob twistKnob = targetedVRInteractable?.GetComponent<VRTwistKnob>();
+                    VRTwistKnobInt twistKnobInt = targetedVRInteractable?.GetComponent<VRTwistKnobInt>();
+                    VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
+                    VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
+                    VRIntUIScroller uiScroll = targetedVRInteractable?.GetComponent<VRIntUIScroller>();
+
+                    if (twistKnob != null)
+                    {
+                        Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
+                    }
+                    else if (twistKnobInt != null)
+                    {
+                        Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                    }
+                    else if (lever != null)
+                    {
+                        Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
+                    }
+                    else if (throttle != null)
+                    {
+                        Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
+                    }
+                    else if (uiScroll != null)
+                    {
+                        uiScroll.scrollRect.normalizedPosition += 0.1f * Input.mouseScrollDelta;
+                    }
+                }
+            }
+        }
+
+        int frameTick = 0;
+        const int framesPerTick = 1 * 60;
+        const int miniTick = 5;
+        //bool wasOnTeam = false;
+        public void FixedUpdate()
+        {
+            if (!flatScreenEnabled || cameraEyeGameObject == null)
+                return;
+
+            frameTick++;
+
+            if (frameTick % miniTick == 0) // every mini tick
+            {
+                GetHoveredObject();
+            }
+
+            if (frameTick >= framesPerTick) // every tick
+            {
+                frameTick = 0;
+
+                CheckEndMission();
+
+                SetTrackingObject(cameraEyeGameObject);
+
+                VRInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
+
+                //bool isOnTeam = VTOLMPSceneManager.instance?.localPlayer?.chosenTeam ?? false;
+                //if (isOnTeam != wasOnTeam)
+                //{
+                //    RegrabTracks();
+                //    wasOnTeam = isOnTeam;
+                //}
+            }
+        }
+
+        public void LateUpdate()
+        {
+            if (!flatScreenEnabled || cameraEyeGameObject == null)
+                return;
+
+            MoveCamera();
+        }
+
+        public void GetHoveredObject()
+        {
+            // Logger.WriteLine($"Checking intersected VRInteractables");
+
+            Camera camera = cameraEyeGameObject.GetComponent<Camera>();
+
+            Ray ray = camera.ScreenPointToRay(Input.mousePosition, Camera.MonoOrStereoscopicEye.Mono);
+
+            List<VRInteractable> intersectedInteractables = new List<VRInteractable>();
+
+            foreach (VRInteractable interactable in VRInteractables)
+            {
+                if (interactable == null || interactable.transform == null)
+                    continue;
+
+                Bounds bounds;
+
+                float radius = Mathf.Min(Mathf.Max(0.01f, interactable.radius), 0.1f); // have a minimum (and maximum) radius to avoid 0 size radius (and to avoid having to calculate rect sizes)
+                bounds = new Bounds(interactable.transform.position, Vector3.one * radius);
+
+                if (bounds.IntersectRay(ray))
+                {
+                    intersectedInteractables.Add(interactable);
+                }
+            }
+
+            float depth = 0.5f;
+            VRInteractable hoveredInteractable = intersectedInteractables
+                .Where(x => x != null && x.transform != null)
+                .OrderBy((x) => Vector3.Distance(x.transform.position, ray.origin + (ray.direction * depth)))
+                .FirstOrDefault();
+
+            targetedVRInteractable = hoveredInteractable;
         }
 
         MeshRenderer PreviouslyHighlightedInteractableRenderer;
@@ -513,262 +732,6 @@ namespace muskit.FlatScreen2
                 parentParentImage;
         }
 
-        public float Sensitivity = 2f;
-        public float RotationLimitX = 160f; // set to -1 to disable
-        public float RotationLimitY = 89f; // set to -1 to disable
-
-        public bool LimitXRotation
-        {
-            get { return RotationLimitX >= 0; }
-            set { RotationLimitX = value ? 160f : -1f; }
-        }
-        public bool LimitYRotation
-        {
-            get { return RotationLimitY >= 0; }
-            set { RotationLimitY = value ? 89f : -1f; }
-        }
-
-        public GameObject cameraEyeGameObject;
-        public GameObject cameraHMDGameObject;
-        public GameObject cameraHelmetGameObject;
-
-        public static float DefaultCameraFOV = 80f;
-        private Vector2 cameraRotation = Vector2.zero;
-        private const string xAxis = "Mouse X";
-        private const string yAxis = "Mouse Y";
-
-        public void MoveCamera()
-        {
-            if (Input.GetMouseButton(1))
-            {
-                cameraRotation.x += Input.GetAxis(xAxis) * Sensitivity;
-                cameraRotation.y += Input.GetAxis(yAxis) * Sensitivity;
-                if (RotationLimitX > 0)
-                    cameraRotation.x = Mathf.Clamp(cameraRotation.x, -RotationLimitX, RotationLimitX);
-                if (RotationLimitY > 0)
-                    cameraRotation.y = Mathf.Clamp(cameraRotation.y, -RotationLimitY, RotationLimitY);
-                var xQuat = Quaternion.AngleAxis(cameraRotation.x, Vector3.up);
-                var yQuat = Quaternion.AngleAxis(cameraRotation.y, Vector3.left);
-
-                cameraEyeGameObject.transform.localRotation = xQuat * yQuat; //Quaternions seem to rotate more consistently than EulerAngles. Sensitivity seemed to change slightly at certain degrees using Euler.
-                                                                                //transform.localEulerAngles = new Vector3(-rotation.y, rotation.x, 0);
-            }
-        }
-        
-        public void ResetCameraRotation()
-        {
-            cameraEyeGameObject.transform.localRotation = Quaternion.identity;
-            cameraRotation = Vector2.zero;
-        }
-
-        public void SetCameraFOV(float fov)
-        {
-            cameraEyeGameObject.GetComponent<Camera>().fieldOfView = fov;
-            cameraHMDGameObject.GetComponent<Camera>().fieldOfView = fov;
-        }
-        public float GetCameraFOV()
-        {
-            return cameraEyeGameObject.GetComponent<Camera>().fieldOfView;
-        }
-
-        public void Update()
-        {
-            if (Input.GetKeyDown(KeyCode.F9))
-                showWindow = !showWindow;
-
-            if (!Enabled)
-                return;
-
-            if (cameraEyeGameObject == null)
-                return;
-
-            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z))
-                ResetCameraRotation();
-
-            HighlightObject(targetedVRInteractable);
-
-            // TODO: change to subtle cursor location indication
-            Cursor.visible = !Input.GetMouseButton(1);
-
-            if (Input.GetMouseButtonDown(0)) // left mouse down
-            {
-                if (targetedVRInteractable != null && heldVRInteractable == null)
-                {
-                    Interactions.Interact(targetedVRInteractable);
-                    heldVRInteractable = targetedVRInteractable;
-                }
-            }
-            if (Input.GetMouseButtonUp(0)) // left mouse up
-            {
-                if (heldVRInteractable != null)
-                {
-                    Interactions.AntiInteract(heldVRInteractable);
-                    heldVRInteractable = null;
-                }
-            }
-
-            // TODO: UI scrollbar dragging
-
-            // scroll wheel
-            if (Input.mouseScrollDelta.y != 0)
-            {
-                if (Input.GetMouseButton(1) || // zoom if not hovering over scrollable or if ctrl/RMB is being held
-                    targetedVRInteractable == null ||
-                    targetedVRInteractable.GetComponent<VRButton>() != null ||
-                    targetedVRInteractable.GetComponent<VRInteractableUIButton>() != null ||
-                    targetedVRInteractable.GetComponent<VRIHoverToggle>() != null)
-                {
-                    float deltaFOV = Input.mouseScrollDelta.y < 0 ? 5 : -5;
-                    SetCameraFOV(Math.Min(Math.Max(GetCameraFOV() + deltaFOV, 30), 120));
-                }
-                else if (targetedVRInteractable != null) // otherwise, scrollable interact
-                {
-                    // Scrollables interactables
-                    VRTwistKnob twistKnob = targetedVRInteractable?.GetComponent<VRTwistKnob>();
-                    VRTwistKnobInt twistKnobInt = targetedVRInteractable?.GetComponent<VRTwistKnobInt>();
-                    VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
-                    VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
-                    VRIntUIScroller uiScroll = targetedVRInteractable?.GetComponent<VRIntUIScroller>();
-
-                    if (twistKnob != null)
-                    {
-                        Interactions.TwistKnob(twistKnob, Input.mouseScrollDelta.y < 0 ? true : false, 0.05f);
-                    }
-                    else if (twistKnobInt != null)
-                    {
-                        Interactions.MoveTwistKnobInt(twistKnobInt, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                    }
-                    else if (lever != null)
-                    {
-                        Interactions.MoveLever(lever, Input.mouseScrollDelta.y < 0 ? 1 : -1, true);
-                    }
-                    else if (throttle != null)
-                    {
-                        Interactions.MoveThrottle(throttle, Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
-                    }
-                    else if (uiScroll != null)
-                    {
-                        uiScroll.scrollRect.normalizedPosition += 0.1f * Input.mouseScrollDelta;
-                    }
-                }
-            }
-        }
-
-        int frame = 0;
-        const int framesPerTick = 1 * 60;
-        const int miniTick = 5;
-        bool wasOnTeam = false;
-        public void FixedUpdate()
-        {
-            if (!Enabled)
-                return;
-
-            if (cameraEyeGameObject == null)
-                return;
-
-            frame++;
-
-            if (frame % miniTick == 0) // every mini tick get the hovered object
-            {
-                GetHoveredObject();
-            }
-
-            if (frame >= framesPerTick)
-            {
-                frame = 0;
-                if (IsFlyingScene())
-                    Activate();
-
-                CheckEndMission();
-
-                SetTrackingObject(cameraEyeGameObject);
-
-                VRInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
-
-                bool isOnTeam = VTOLMPSceneManager.instance?.localPlayer?.chosenTeam ?? false;
-                if (isOnTeam != wasOnTeam)
-                    RegrabPlayerObjects();
-
-                wasOnTeam = isOnTeam;
-            }
-        }
-
-        public void LateUpdate()
-        {
-            if (!Enabled)
-                return;
-
-            MoveCamera();
-        }
-
-        public void RegrabPlayerObjects()
-        {
-            FlatScreen2Plugin.Write("Regrabbing player objects...");
-            activated = false;
-            showEndScreenWindow = false;
-            cameraEyeGameObject = null;
-            cameraHMDGameObject = null;
-            playerBody = null;
-            playerLeftHand = null;
-            playerRightHand = null;
-            viewIsSpec = false;
-
-            if (TryUpdateCameraTracks())
-            {
-                FlatScreen2Plugin.Write($"    Camera grabbed: {cameraEyeGameObject}");
-                ResetCameraRotation();
-            }
-            else
-            {
-                FlatScreen2Plugin.Write($"    Could not find camera!");
-            }
-        }
-
-        //public void OnDestroy()
-        //{
-        //    SceneManager.activeSceneChanged -= OnSceneChange;
-        //}
-
-        public void GetHoveredObject()
-        {
-            // Logger.WriteLine($"Checking intersected VRInteractables");
-
-            Camera camera = cameraEyeGameObject.GetComponent<Camera>();
-
-            Ray ray = camera.ScreenPointToRay(Input.mousePosition, Camera.MonoOrStereoscopicEye.Mono);
-
-            List<VRInteractable> intersectedInteractables = new List<VRInteractable>();
-
-            foreach (VRInteractable interactable in VRInteractables)
-            {
-                if (interactable == null || interactable.transform == null)
-                    continue;
-
-                Bounds bounds;
-
-                float radius = Mathf.Min(Mathf.Max(0.01f, interactable.radius), 0.1f); // have a minimum (and maximum) radius to avoid 0 size radius (and to avoid having to calculate rect sizes)
-                bounds = new Bounds(interactable.transform.position, Vector3.one * radius);
-
-                if (bounds.IntersectRay(ray))
-                {
-                    intersectedInteractables.Add(interactable);
-                }
-            }
-
-            float depth = 0.5f;
-            VRInteractable hoveredInteractable = intersectedInteractables
-                .Where(x => x != null && x.transform != null)
-                .OrderBy((x) => Vector3.Distance(x.transform.position, ray.origin + (ray.direction * depth)))
-                .FirstOrDefault();
-
-            targetedVRInteractable = hoveredInteractable;
-        }
-
-        public IEnumerable<Camera> GetSpectatorCameras()
-        {
-            return GameObject.FindObjectsOfType<Camera>(true).Where(c => c.name == "FlybyCam" || c.name == "flybyHMCScam");
-        }
-
         public void CheckEndMission()
         {
             if (showEndScreenWindow)
@@ -778,7 +741,7 @@ namespace muskit.FlatScreen2
                 return;
 
             if (endMission.endScreenObject?.activeSelf == true)
-                ShowEndScreenWindow(endMission);
+                ShowEndMissionWindow(endMission);
         }
     }
 }
