@@ -78,7 +78,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="FlatScreen2MonoBehaviour.cs" />
-    <Compile Include="FlightSceneManagerRestart.cs" />
+    <Compile Include="HarmonyPatches.cs" />
     <Compile Include="FlatScreen2Plugin.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TrackIR\TrackIRTransformer.cs" />

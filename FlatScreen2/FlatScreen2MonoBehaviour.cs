@@ -23,6 +23,9 @@ namespace muskit.FlatScreen2
         // TODO?: WASDEQ controls
         // TODO?: Bobblehead gets a VRInteractable
 
+        public static FlatScreen2MonoBehaviour instance { get; private set; }
+
+
         private Rect windowRect = new Rect(25, 25, 350, 500);
         private bool showWindow = true;
         public TrackIRTransformer TrackIRTransformer { get; private set; }
@@ -42,8 +45,6 @@ namespace muskit.FlatScreen2
         private GameObject playerBody = null;
         private GameObject playerLeftHand = null;
         private GameObject playerRightHand = null;
-
-        public static FlatScreen2MonoBehaviour Instance { get; private set; }
 
         public static bool IsFlyingScene()
         {
@@ -93,7 +94,7 @@ namespace muskit.FlatScreen2
 
         public void Awake()
         {
-            Instance = this;
+            instance = this;
         }
 
         private void VRHeadChange()
@@ -160,9 +161,12 @@ namespace muskit.FlatScreen2
 
             if (!flatScreenEnabled)
             {
-                flatScreenEnabled = GUILayout.Button("Activate (cannot revert!!)");
-                if (flatScreenEnabled) // just enabled
+                bool toEnable = GUILayout.Button("Activate (cannot revert!!)");
+                if (toEnable)
+                {
+                    flatScreenEnabled = true;
                     Activate();
+                }
 
                 return;
             }
@@ -310,8 +314,9 @@ namespace muskit.FlatScreen2
             VRHead.OnVRHeadChanged += VRHeadChange;
 
             VRUtils.DisableVR();
-
             RegrabTracks();
+
+            // TODO: set camera parameters to look less warped
         }
 
         public void SetAvatarVisibility(bool isVis)
@@ -354,7 +359,6 @@ namespace muskit.FlatScreen2
             playerLeftHand?.SetActive(isVis);
             FlatScreen2Plugin.Write($"Setting right hand ({playerRightHand}) vis to {isVis}");
             playerRightHand?.SetActive(isVis);
-            FlatScreen2Plugin.Write("    WARNING: no reference to the avatar component to set its visibility!");
         }
 
         public float Sensitivity = 2f;

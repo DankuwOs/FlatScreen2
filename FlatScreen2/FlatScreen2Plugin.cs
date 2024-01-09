@@ -1,4 +1,5 @@
 using System.Reflection;
+using Harmony;
 
 using UnityEngine;
 
@@ -18,6 +19,8 @@ namespace muskit.FlatScreen2
         public FlatScreen2Plugin() : base()
         {
             instance = this;
+            HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
+            harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
         }
 
         // This method is run once, when the Mod Loader is done initialising this game object
