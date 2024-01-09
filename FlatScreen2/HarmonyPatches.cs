@@ -42,4 +42,17 @@ namespace muskit.FlatScreen2
             }
         }
     }
+
+    [HarmonyPatch(typeof(EjectionSeat), nameof(EjectionSeat.Start))]
+    internal class ResetStateOnPlayerSpawn
+    {
+        static void Postfix()
+        {
+            if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
+            {
+                FlatScreen2Plugin.Write("Player spawn! Resetting state...");
+                FlatScreen2MonoBehaviour.instance?.ResetState();
+            }
+        }
+    }
 }

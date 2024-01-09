@@ -17,9 +17,8 @@ namespace muskit.FlatScreen2
     public class FlatScreen2MonoBehaviour : MonoBehaviour
     {
         // https://vtolvr-mods.com/viewbugs/zj7ylyrf/
-        // TODO: Back button (ESC)
-        // TODO: Better ImGui for restarting/ending mission
         // TODO: Usable with VR headset active (disable VR to control cameras)
+            // - Be able to start flight without putting helmet on
         // TODO?: WASDEQ controls
         // TODO?: Bobblehead gets a VRInteractable
 
@@ -107,17 +106,17 @@ namespace muskit.FlatScreen2
 
         public void Activate()
         {
-            VRHead.OnVRHeadChanged += VRHeadChange;
+            VRHead.OnVRHeadChanged += ResetState;
 
             VRUtils.DisableVR();
-            RegrabTracks();
+            ResetState();
 
             // TODO: set camera parameters to look less warped
         }
 
-        private void VRHeadChange()
+        public void ResetState()
         {
-            FlatScreen2Plugin.Write("VRHeadChanged!");
+            FlatScreen2Plugin.Write("State reset!");
             showEndMissionWindow = false;
             endMissionWindowAutoShown = false;
 
@@ -340,7 +339,7 @@ namespace muskit.FlatScreen2
             if (playerRightHand == null)
                 playerRightHand = GameObject.Find("Controller (right)/newGlove/SWAT_glower_pivot.002");
 
-            // helmet if in MP briefing room
+            // helmet if in team select
             var teamSelectAv = GameObject.Find("TeamSelectSpawn/BriefingAvatar");
             if (teamSelectAv != null)
             {
@@ -349,6 +348,7 @@ namespace muskit.FlatScreen2
                     .gameObject.SetActive(isVis);
             }
 
+            // helmet if in MP briefing room
             var seshPms = FindObjectsOfType<PlayerModelSync>();
             foreach (var pms in seshPms)
             {
@@ -391,7 +391,7 @@ namespace muskit.FlatScreen2
         public GameObject cameraHMDGameObject;
         public GameObject cameraHelmetGameObject;
 
-        public const int DEFAULT_FOV = 75;
+        public const int DEFAULT_FOV = 60;
         int currentFOV = DEFAULT_FOV;
         private Vector2 cameraRotation = Vector2.zero;
         private const string xAxis = "Mouse X";
@@ -733,7 +733,7 @@ namespace muskit.FlatScreen2
             if (frameTick >= FRAMES_PER_TICK) // every tick
             {
                 frameTick = 0;
-                
+
                 if (endMission == null && !endMissionWindowAutoShown)
                 {
                     // check if mission has ended
@@ -767,7 +767,7 @@ namespace muskit.FlatScreen2
             showEndMissionWindow = false;
 
             if (flatScreenEnabled)
-                VRHead.OnVRHeadChanged -= VRHeadChange;
+                VRHead.OnVRHeadChanged -= ResetState;
 
             instance = null;
         }
