@@ -15,19 +15,23 @@ namespace muskit.FlatScreen2
         {
             instance.Log(msg);
         }
-
-        public FlatScreen2Plugin() : base()
-        {
-            instance = this;
-            HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
-            harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
-        }
-
+        
         // This method is run once, when the Mod Loader is done initialising this game object
         public override void ModLoaded()
         {
-            EnableFlatScreen();
-            base.ModLoaded();
+            if (instance != null)
+            {
+                Write("WARNING: Tried to load another mod instance when one already exists! Destroying duplicate self.");
+                Destroy(this);
+            }
+            else
+            {
+                instance = this;
+                HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
+                harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
+                EnableFlatScreen();
+                base.ModLoaded();
+            }
         }
 
         public void EnableFlatScreen()
