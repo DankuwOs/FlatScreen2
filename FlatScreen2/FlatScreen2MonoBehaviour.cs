@@ -665,6 +665,7 @@ namespace muskit.FlatScreen2
             if (Input.mouseScrollDelta.y != 0)
             {
                 if (Input.GetMouseButton(1) || // zoom if not hovering over scrollable or if ctrl/RMB is being held
+                    Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
                     targetedVRInteractable == null ||
                     targetedVRInteractable.GetComponent<VRButton>() != null ||
                     targetedVRInteractable.GetComponent<VRInteractableUIButton>() != null ||
