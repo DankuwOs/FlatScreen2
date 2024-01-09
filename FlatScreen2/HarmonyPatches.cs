@@ -28,7 +28,7 @@ namespace muskit.FlatScreen2
         {
             if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
             {
-                FlatScreen2Plugin.Write("FlatScreen is enabled! Enabling XR for scene loader's VR check...");
+                FlatScreen2Plugin.Write("FlatScreen is enabled! Enabling XR to skip scene loader's VR check...");
                 XRSettings.enabled = true;
             }
         }

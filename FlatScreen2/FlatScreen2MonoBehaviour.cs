@@ -106,9 +106,12 @@ namespace muskit.FlatScreen2
 
         public void Activate()
         {
+            FlatScreen2Plugin.Write("Activating!");
             VRHead.OnVRHeadChanged += ResetState;
+            SceneManager.activeSceneChanged += (scn1, scn2) => VideoSettings();
 
-            VRUtils.DisableVR();
+            VideoSettings();
+
             ResetState();
 
             // TODO: set camera parameters to look less warped
@@ -122,6 +125,14 @@ namespace muskit.FlatScreen2
 
             currentFOV = DEFAULT_FOV;
             RegrabTracks();
+        }
+
+        public void VideoSettings()
+        {
+            FlatScreen2Plugin.Write("Setting video settings...");
+            VRUtils.DisableVR();
+            Application.targetFrameRate = Mathf.Min(120, Screen.currentResolution.refreshRate);
+            QualitySettings.antiAliasing = 2;
         }
 
         public void OnGUI()
