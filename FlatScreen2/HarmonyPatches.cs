@@ -55,4 +55,20 @@ namespace muskit.FlatScreen2
             }
         }
     }
+
+    [HarmonyPatch(typeof(LoadingSceneHelmet), nameof(LoadingSceneHelmet.Start))]
+    internal class LoadingHelmetEquipper
+    {
+        static void Postfix(LoadingSceneHelmet __instance)
+        {
+            if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
+            {
+                FlatScreen2Plugin.Write("Teleporting loading helmet to equip...");
+
+                var traverse = new Traverse(__instance);
+                traverse.Field("grabbed").SetValue(true);
+                __instance.transform.position = __instance.headHelmet.transform.position;
+            }
+        }
+    }
 }
