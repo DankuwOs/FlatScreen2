@@ -35,10 +35,11 @@ namespace muskit.FlatScreen2
         public VRInteractable heldVRInteractable;
         public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
 
-        private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 300, Screen.height / 2 - 400, 600, 800);
+        private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 300, Screen.height / 2 - 250, 600, 500);
         private bool showEndMissionWindow = false;
         private bool endMissionWindowAutoShown = false;
-        EndMission endMission;
+
+        EndMission endMission; // is always populated in a flying scene
 
         private bool viewIsSpec = false;
 
@@ -93,6 +94,21 @@ namespace muskit.FlatScreen2
             return GameObject.FindObjectsOfType<Camera>(true).Where(c => c.name == "FlybyCam" || c.name == "flybyHMCScam");
         }
 
+        /// <summary>
+        /// Check if the mission has ended. Also populates this.endMission if it's null.
+        /// </summary>
+        /// <returns></returns>
+        public bool CheckMissionEnded()
+        {
+            if (endMission == null)
+                endMission = GameObject.FindObjectOfType<EndMission>(false);
+
+            if (endMission?.endScreenObject?.activeSelf == true)
+                return true;
+
+            return false;
+        }
+
         public FlatScreen2MonoBehaviour()
         {
             if (instance != null)
@@ -122,6 +138,7 @@ namespace muskit.FlatScreen2
             FlatScreen2Plugin.Write("State reset!");
             showEndMissionWindow = false;
             endMissionWindowAutoShown = false;
+            logScroll = Vector2.zero;
 
             currentFOV = DEFAULT_FOV;
             RegrabTracks();
@@ -139,7 +156,7 @@ namespace muskit.FlatScreen2
         {
             if (showWindow)
                 windowRect = GUI.Window(405, windowRect, GUIMainWindow, "FlatScreen 2 Control Panel");
-            if (showEndMissionWindow)
+            if (endMission != null && showEndMissionWindow)
                 endMissionWindowRect = GUI.Window(406, endMissionWindowRect, GUIEndMissionWindow, "FlatScreen 2 End Mission");
         }
 
@@ -148,38 +165,6 @@ namespace muskit.FlatScreen2
             showEndMissionWindow = !showEndMissionWindow;
             if (showEndMissionWindow)
                 GUI.FocusWindow(406);
-        }
-
-        private void GUIEndMissionWindow(int id)
-        {
-            GUI.DragWindow(new Rect(0, 0, 10000, 20));
-
-            // GUILayout.Label($"Completion Time: {endMission.metCompleteText?.text}");
-
-            if (GUILayout.Button("Restart Mission"))
-            {
-                endMission?.ReloadSceneButton();
-                showEndMissionWindow = false;
-            }
-            if (GUILayout.Button("Finish Mission"))
-            {
-                endMission?.ReturnToMainButton();
-                showEndMissionWindow = false;
-            }
-
-            // flight log
-            var stringBuilder = new System.Text.StringBuilder();
-            foreach (FlightLogger.LogEntry logEntry in FlightLogger.GetLog())
-                stringBuilder.AppendLine(logEntry.timestampedMessage);
-            GUI.TextArea(new Rect(25, 80, 550, 600), stringBuilder.ToString());
-
-            GUILayout.Space(650);
-
-            if (QuicksaveManager.quickloadAvailable && GUILayout.Button("Load Quicksave"))
-            {
-                endMission?.Quickload();
-                showEndMissionWindow = false;
-            }
         }
 
         private Vector2 mainWinScrollPos;
@@ -327,6 +312,95 @@ namespace muskit.FlatScreen2
                 }*/
             }
             GUILayout.EndScrollView();
+        }
+
+        Vector2 logScroll = Vector2.zero;
+        private void GUIEndMissionWindow(int id)
+        {
+            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+
+            if (!VTOLMPUtils.IsMultiplayer() && GUILayout.Button("Restart Mission"))
+            {
+                FlightSceneManager.instance.ReloadScene();
+                showEndMissionWindow = false;
+            }
+            if (GUILayout.Button("Finish Mission"))
+            {
+                FlightSceneManager.instance.ReturnToBriefingOrExitScene();
+                showEndMissionWindow = false;
+            }
+
+            var missionStatus = string.Empty;
+            if (endMission.inProgressObject.activeSelf)
+            {
+                missionStatus = "IN PROGRESS";
+            }
+            if (endMission.completeObject.activeSelf)
+            {
+                GUI.contentColor = Color.green;
+                missionStatus = "COMPLETE";
+            }
+            if (endMission.failedObject.activeSelf)
+            {
+                GUI.contentColor = Color.red;
+                missionStatus = "FAILED";
+            }
+            GUILayout.Label($"Mission Status: {missionStatus}");
+            GUI.contentColor = Color.white;
+            
+            if (CheckMissionEnded())
+            {
+                GUILayout.Label($"Mission Completion Time: {endMission.metCompleteText?.text}");
+            }
+
+            GUILayout.BeginHorizontal();
+            {
+                GUILayout.FlexibleSpace();
+                GUILayout.Label("Flight Log:");
+                GUILayout.FlexibleSpace();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginScrollView(logScroll, GUILayout.MaxHeight(400), GUILayout.ExpandHeight(true));
+            {
+                var stringBuilder = new System.Text.StringBuilder();
+                foreach (FlightLogger.LogEntry logEntry in FlightLogger.GetLog())
+                    stringBuilder.AppendLine(logEntry.timestampedMessage);
+                GUILayout.TextArea(stringBuilder.ToString(), GUILayout.ExpandHeight(true));
+            }
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(24);
+
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginHorizontal();
+            {
+                if (QuicksaveManager.instance == null ||
+                    (!QuicksaveManager.quickloadAvailable && !QuicksaveManager.instance.CheckQsEligibility()))
+                {
+                    GUILayout.Label($"Quicksave is NOT available.");
+                }
+                else
+                {
+                    GUILayout.Label($"Quicksave is available:");
+
+                    GUI.enabled = QuicksaveManager.instance.CheckQsEligibility();
+                    if (GUILayout.Button("SAVE"))
+                    {
+                        QuicksaveManager.instance.Quicksave();
+                    }
+                    
+                    GUI.enabled = QuicksaveManager.quickloadAvailable;
+                    if (GUILayout.Button("LOAD"))
+                    {
+                        QuicksaveManager.instance.Quickload();
+                        showEndMissionWindow = false;
+                    }
+
+                    GUI.enabled = true;
+                }
+            }
+            GUILayout.EndHorizontal();
         }
 
         public void SetTrackingObject(GameObject trackingObject)
@@ -746,14 +820,12 @@ namespace muskit.FlatScreen2
             {
                 frameTick = 0;
 
-                if (endMission == null && !endMissionWindowAutoShown)
+                if (!endMissionWindowAutoShown)
                 {
                     // check if mission has ended
-                    EndMission endMission = GameObject.FindObjectOfType<EndMission>(false);
-                    if (endMission != null && endMission.endScreenObject?.activeSelf == true)
+                    if (CheckMissionEnded())
                     {
                         FlatScreen2Plugin.Write("Ended mission!! Showing mission end window...");
-                        this.endMission = endMission;
                         showEndMissionWindow = false;
                         ToggleEndMissionWindow();
                         endMissionWindowAutoShown = true;
