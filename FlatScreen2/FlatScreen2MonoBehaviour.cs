@@ -19,34 +19,64 @@ namespace muskit.FlatScreen2
         // https://vtolvr-mods.com/viewbugs/zj7ylyrf/
         // TODO: Usable with VR headset active (disable VR to control cameras)
             // - Be able to start flight without putting helmet on
+        // TODO: Saved preferences
+        // TODO?: Custom cursors
         // TODO?: WASDEQ controls
         // TODO?: Bobblehead gets a VRInteractable
 
         public static FlatScreen2MonoBehaviour instance { get; private set; }
 
-
-        private Rect windowRect = new Rect(25, 25, 350, 500);
-        private bool showWindow = true;
-        public TrackIRTransformer TrackIRTransformer { get; private set; }
-
         public bool flatScreenEnabled { get; private set; } = false;
+
+        public TrackIRTransformer trackIRTransformer { get; private set; }
+
+        private bool showMainWindow = true;
+        private Rect mainWindowRect = new Rect(25, 25, 350, 525);
+        private Vector2 mainWindowScroll;
 
         public VRInteractable targetedVRInteractable;
         public VRInteractable heldVRInteractable;
         public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
 
-        private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 300, Screen.height / 2 - 250, 600, 500);
+        // EndMission
         private bool showEndMissionWindow = false;
         private bool endMissionWindowAutoShown = false;
+        private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 300, Screen.height / 2 - 250, 600, 500);
+        private Vector2 endMisWinLogScroll = Vector2.zero;
+        private EndMission endMission; // is always populated in a flying scene
 
-        EndMission endMission; // is always populated in a flying scene
+        // camera looking preferences
+        public float mouseSensitivity = 2f; // PREFERENCE
+        private float rotLimX = 160f; // PREFERENCE; set to -1 to disable
+        private float rotLimY = 89f; // PREFERENCE; set to -1 to disable
+        public bool LimitXRotation
+        {
+            get { return rotLimX >= 0; }
+            set { rotLimX = value ? 160f : -1f; }
+        }
+        public bool LimitYRotation
+        {
+            get { return rotLimY >= 0; }
+            set { rotLimY = value ? 89f : -1f; }
+        }
 
-        private bool viewIsSpec = false;
+        // current FOV
+        public const int DEFAULT_FOV = 60;
+        int currentFOV = DEFAULT_FOV; // PREFERENCE
+
+        // camera tracks
+        private GameObject cameraEyeGameObject;
+        private GameObject cameraHMDGameObject;
+        private GameObject cameraHelmetGameObject;
+        private Vector2 cameraRotation = Vector2.zero;
 
         // player avatar
         private GameObject playerBody = null;
         private GameObject playerLeftHand = null;
         private GameObject playerRightHand = null;
+
+        private bool viewIsSpec = false;
+        private bool zoomReqCtrlRMB = false; // PREFERENCE
 
         public static bool IsFlyingScene()
         {
@@ -83,10 +113,7 @@ namespace muskit.FlatScreen2
                     }
                 }
             }
-            //FlatScreen2Plugin.Write($"finished populating eye camera list ({cameras.Count()})");
-            var cam = cameras.FirstOrDefault();
-            //FlatScreen2Plugin.Write($"using camera {cam?.name}");
-            return cam;
+            return cameras.FirstOrDefault();
         }
 
         public static IEnumerable<Camera> GetSpectatorCameras()
@@ -102,8 +129,10 @@ namespace muskit.FlatScreen2
         {
             if (endMission == null)
                 endMission = GameObject.FindObjectOfType<EndMission>(false);
-
-            if (endMission?.endScreenObject?.activeSelf == true)
+            if (endMission == null)
+                return false;
+            
+            if (endMission.completeObject.activeSelf || endMission.failedObject.activeSelf)
                 return true;
 
             return false;
@@ -126,19 +155,21 @@ namespace muskit.FlatScreen2
             VRHead.OnVRHeadChanged += ResetState;
             SceneManager.activeSceneChanged += (scn1, scn2) => VideoSettings();
 
-            VideoSettings();
+            trackIRTransformer = gameObject.AddComponent<TrackIRTransformer>();
 
+            VideoSettings();
             ResetState();
 
             // TODO: set camera parameters to look less warped
         }
 
-        public void ResetState()
+        public void ResetState() // run on respawn
         {
             FlatScreen2Plugin.Write("State reset!");
             showEndMissionWindow = false;
             endMissionWindowAutoShown = false;
-            logScroll = Vector2.zero;
+            endMisWinLogScroll = Vector2.zero;
+            viewIsSpec = false;
 
             currentFOV = DEFAULT_FOV;
             RegrabTracks();
@@ -154,8 +185,8 @@ namespace muskit.FlatScreen2
 
         public void OnGUI()
         {
-            if (showWindow)
-                windowRect = GUI.Window(405, windowRect, GUIMainWindow, "FlatScreen 2 Control Panel");
+            if (showMainWindow)
+                mainWindowRect = GUI.Window(405, mainWindowRect, GUIMainWindow, "FlatScreen 2 Control Panel");
             if (endMission != null && showEndMissionWindow)
                 endMissionWindowRect = GUI.Window(406, endMissionWindowRect, GUIEndMissionWindow, "FlatScreen 2 End Mission");
         }
@@ -167,7 +198,6 @@ namespace muskit.FlatScreen2
                 GUI.FocusWindow(406);
         }
 
-        private Vector2 mainWinScrollPos;
         void GUIMainWindow(int windowID)
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
@@ -187,7 +217,7 @@ namespace muskit.FlatScreen2
                 return;
             }
 
-            mainWinScrollPos = GUILayout.BeginScrollView(mainWinScrollPos);
+            mainWindowScroll = GUILayout.BeginScrollView(mainWindowScroll);
             {
                 if (cameraEyeGameObject != null || TryUpdateCameraTracks())
                 {
@@ -203,9 +233,11 @@ namespace muskit.FlatScreen2
                 }
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label($"Mouse Sensitivity: {Sensitivity}");
-                Sensitivity = Mathf.Round(GUILayout.HorizontalSlider(Sensitivity, 1f, 9f));
+                GUILayout.Label($"Mouse Sensitivity: {mouseSensitivity}");
+                mouseSensitivity = Mathf.Round(GUILayout.HorizontalSlider(mouseSensitivity, 1f, 9f));
                 GUILayout.EndHorizontal();
+
+                zoomReqCtrlRMB = GUILayout.Toggle(zoomReqCtrlRMB, " Require Ctrl/RMB to scroll-zoom\n (might be useful for trackpad pinch-zoomers!");
 
                 LimitXRotation = GUILayout.Toggle(LimitXRotation, " Limit X Rotation");
                 LimitYRotation = GUILayout.Toggle(LimitYRotation, " Limit Y Rotation");
@@ -225,11 +257,11 @@ namespace muskit.FlatScreen2
                 }
                 GUILayout.EndHorizontal();
 
-                if (targetedVRInteractable != null)
-                    foreach (var comp in targetedVRInteractable?.GetComponents<MonoBehaviour>())
-                    {
-                        GUILayout.Label(comp.GetType().Name);
-                    }
+                //if (targetedVRInteractable != null)
+                //    foreach (var comp in targetedVRInteractable?.GetComponents<MonoBehaviour>())
+                //    {
+                //        GUILayout.Label(comp.GetType().Name);
+                //    }
 
                 GUILayout.BeginHorizontal();
                 {
@@ -254,11 +286,7 @@ namespace muskit.FlatScreen2
                 {
                     viewIsSpec = !viewIsSpec;
 
-                    foreach (Camera specCam in GetSpectatorCameras())
-                    {
-                        specCam.depth = viewIsSpec ? 50 : -6;
-                    }
-
+                    SetSpecActive(viewIsSpec);
                     SetAvatarVisibility(viewIsSpec);
                 }
 
@@ -276,17 +304,19 @@ namespace muskit.FlatScreen2
 
                 GUILayout.Space(30);
 
-                if (GUILayout.Button("Start Tracking"))
+                if (GUILayout.Button(trackIRTransformer.IsRunning ? "Stop Tracking" : "Start Tracking"))
                 {
-                    if (TrackIRTransformer == null)
-                        TrackIRTransformer = GetComponent<TrackIRTransformer>() ?? gameObject.AddComponent<TrackIRTransformer>();
-                    TrackIRTransformer.StartTracking();
-                }
-                if (GUILayout.Button("Stop Tracking"))
-                {
-                    if (TrackIRTransformer == null)
-                        TrackIRTransformer = GetComponent<TrackIRTransformer>() ?? gameObject.AddComponent<TrackIRTransformer>();
-                    TrackIRTransformer.StopTracking();
+                    if (trackIRTransformer.IsRunning)
+                    {
+                        // stop tracking
+                        trackIRTransformer.StopTracking();
+                    }
+                    else
+                    {
+                        // start tracking
+                        ResetCameraRotation();
+                        trackIRTransformer.StartTracking();
+                    }
                 }
 
                 GUILayout.Space(30);
@@ -314,7 +344,6 @@ namespace muskit.FlatScreen2
             GUILayout.EndScrollView();
         }
 
-        Vector2 logScroll = Vector2.zero;
         private void GUIEndMissionWindow(int id)
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
@@ -330,26 +359,30 @@ namespace muskit.FlatScreen2
                 showEndMissionWindow = false;
             }
 
-            var missionStatus = string.Empty;
-            if (endMission.inProgressObject.activeSelf)
+            GUILayout.BeginHorizontal();
             {
-                missionStatus = "IN PROGRESS";
+                GUILayout.Label($"Mission Status: ", GUILayout.ExpandWidth(false));
+                if (endMission.inProgressObject.activeSelf)
+                {
+                    GUILayout.Label("IN PROGRESS");
+                }
+                if (endMission.completeObject.activeSelf)
+                {
+                    GUI.contentColor = Color.green;
+                    GUILayout.Label("COMPLETE");
+                }
+                if (endMission.failedObject.activeSelf)
+                {
+                    GUI.contentColor = Color.red;
+                    GUILayout.Label("FAILED");
+                }
+                GUI.contentColor = Color.white;
             }
-            if (endMission.completeObject.activeSelf)
-            {
-                GUI.contentColor = Color.green;
-                missionStatus = "COMPLETE";
-            }
-            if (endMission.failedObject.activeSelf)
-            {
-                GUI.contentColor = Color.red;
-                missionStatus = "FAILED";
-            }
-            GUILayout.Label($"Mission Status: {missionStatus}");
-            GUI.contentColor = Color.white;
+            GUILayout.EndHorizontal();
             
             if (CheckMissionEnded())
             {
+                GUILayout.Space(-7);
                 GUILayout.Label($"Mission Completion Time: {endMission.metCompleteText?.text}");
             }
 
@@ -360,8 +393,9 @@ namespace muskit.FlatScreen2
                 GUILayout.FlexibleSpace();
             }
             GUILayout.EndHorizontal();
+            GUILayout.Space(-7);
 
-            GUILayout.BeginScrollView(logScroll, GUILayout.MaxHeight(400), GUILayout.ExpandHeight(true));
+            GUILayout.BeginScrollView(endMisWinLogScroll, GUILayout.MaxHeight(400), GUILayout.ExpandHeight(true));
             {
                 var stringBuilder = new System.Text.StringBuilder();
                 foreach (FlightLogger.LogEntry logEntry in FlightLogger.GetLog())
@@ -369,49 +403,32 @@ namespace muskit.FlatScreen2
                 GUILayout.TextArea(stringBuilder.ToString(), GUILayout.ExpandHeight(true));
             }
             GUILayout.EndScrollView();
+            if (GUILayout.Button("Dump Flight Log"))
+                endMission.DumpFlightLog();
 
             GUILayout.Space(24);
 
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
             {
-                if (QuicksaveManager.instance == null ||
-                    (!QuicksaveManager.quickloadAvailable && !QuicksaveManager.instance.CheckQsEligibility()))
-                {
-                    GUILayout.Label($"Quicksave is NOT available.");
-                }
-                else
-                {
-                    GUILayout.Label($"Quicksave is available:");
+                GUILayout.Label($"Quicksave:");
 
-                    GUI.enabled = QuicksaveManager.instance.CheckQsEligibility();
-                    if (GUILayout.Button("SAVE"))
-                    {
-                        QuicksaveManager.instance.Quicksave();
-                    }
+                GUI.enabled = QuicksaveManager.instance.CheckQsEligibility();
+                if (GUILayout.Button("SAVE"))
+                {
+                    QuicksaveManager.instance.Quicksave();
+                }
                     
-                    GUI.enabled = QuicksaveManager.quickloadAvailable;
-                    if (GUILayout.Button("LOAD"))
-                    {
-                        QuicksaveManager.instance.Quickload();
-                        showEndMissionWindow = false;
-                    }
-
-                    GUI.enabled = true;
+                GUI.enabled = QuicksaveManager.quickloadAvailable;
+                if (GUILayout.Button("LOAD"))
+                {
+                    QuicksaveManager.instance.Quickload();
+                    showEndMissionWindow = false;
                 }
+
+                GUI.enabled = true;
             }
             GUILayout.EndHorizontal();
-        }
-
-        public void SetTrackingObject(GameObject trackingObject)
-        {
-            if (TrackIRTransformer == null)
-                TrackIRTransformer = GetComponent<TrackIRTransformer>() ?? gameObject.AddComponent<TrackIRTransformer>();
-
-            if (TrackIRTransformer == null)
-                return;
-
-            TrackIRTransformer.trackedObject = trackingObject?.transform;
         }
 
         public void SetAvatarVisibility(bool isVis)
@@ -457,46 +474,36 @@ namespace muskit.FlatScreen2
             playerRightHand?.SetActive(isVis);
         }
 
-        public float Sensitivity = 2f;
-        public float RotationLimitX = 160f; // set to -1 to disable
-        public float RotationLimitY = 89f; // set to -1 to disable
-
-        public bool LimitXRotation
+        public void SetSpecActive(bool active)
         {
-            get { return RotationLimitX >= 0; }
-            set { RotationLimitX = value ? 160f : -1f; }
-        }
-        public bool LimitYRotation
-        {
-            get { return RotationLimitY >= 0; }
-            set { RotationLimitY = value ? 89f : -1f; }
-        }
-
-        public GameObject cameraEyeGameObject;
-        public GameObject cameraHMDGameObject;
-        public GameObject cameraHelmetGameObject;
-
-        public const int DEFAULT_FOV = 60;
-        int currentFOV = DEFAULT_FOV;
-        private Vector2 cameraRotation = Vector2.zero;
-        private const string xAxis = "Mouse X";
-        private const string yAxis = "Mouse Y";
-
-        public void MoveCamera()
-        {
-            if (Input.GetMouseButton(1))
+            foreach (Camera specCam in GetSpectatorCameras())
             {
-                cameraRotation.x += Input.GetAxis(xAxis) * Sensitivity;
-                cameraRotation.y += Input.GetAxis(yAxis) * Sensitivity;
-                if (RotationLimitX > 0)
-                    cameraRotation.x = Mathf.Clamp(cameraRotation.x, -RotationLimitX, RotationLimitX);
-                if (RotationLimitY > 0)
-                    cameraRotation.y = Mathf.Clamp(cameraRotation.y, -RotationLimitY, RotationLimitY);
+                specCam.depth = active ? 50 : -6;
+            }
+        }
+
+        public void MouseMoveCamera()
+        {
+            if (Input.GetMouseButton(1) && !trackIRTransformer.IsRunning)
+            {
+                cameraRotation.x += Input.GetAxis("Mouse X") * mouseSensitivity;
+                cameraRotation.y += Input.GetAxis("Mouse Y") * mouseSensitivity;
+                if (rotLimX > 0)
+                    cameraRotation.x = Mathf.Clamp(cameraRotation.x, -rotLimX, rotLimX);
+                if (rotLimY > 0)
+                    cameraRotation.y = Mathf.Clamp(cameraRotation.y, -rotLimY, rotLimY);
                 var xQuat = Quaternion.AngleAxis(cameraRotation.x, Vector3.up);
                 var yQuat = Quaternion.AngleAxis(cameraRotation.y, Vector3.left);
 
                 cameraEyeGameObject.transform.localRotation = xQuat * yQuat; //Quaternions seem to rotate more consistently than EulerAngles. Sensitivity seemed to change slightly at certain degrees using Euler.
-                                                                                //transform.localEulerAngles = new Vector3(-rotation.y, rotation.x, 0);
+                                                                             //transform.localEulerAngles = new Vector3(-rotation.y, rotation.x, 0);
+
+                // TODO?: change to subtle cursor location indication (ie. cross)
+                Cursor.visible = false;
+            }
+            else
+            {
+                Cursor.visible = true;
             }
         }
         
@@ -552,7 +559,6 @@ namespace muskit.FlatScreen2
             playerBody = null;
             playerLeftHand = null;
             playerRightHand = null;
-            viewIsSpec = false;
 
             if (TryUpdateCameraTracks())
             {
@@ -567,19 +573,16 @@ namespace muskit.FlatScreen2
 
             foreach (Camera specCam in GetSpectatorCameras())
             {
-                FlatScreen2Plugin.Write($"    SpecCam ({specCam.name}) depth: {specCam.depth}");
                 specCam.depth = -6;
             }
 
+            SetSpecActive(false);
             SetAvatarVisibility(false);
         }
 
         public void GetHoveredObject()
         {
-            // Logger.WriteLine($"Checking intersected VRInteractables");
-
             Camera camera = cameraEyeGameObject.GetComponent<Camera>();
-
             Ray ray = camera.ScreenPointToRay(Input.mousePosition, Camera.MonoOrStereoscopicEye.Mono);
 
             List<VRInteractable> intersectedInteractables = new List<VRInteractable>();
@@ -601,12 +604,10 @@ namespace muskit.FlatScreen2
             }
 
             float depth = 0.5f;
-            VRInteractable hoveredInteractable = intersectedInteractables
+            targetedVRInteractable = intersectedInteractables
                 .Where(x => x != null && x.transform != null)
                 .OrderBy((x) => Vector3.Distance(x.transform.position, ray.origin + (ray.direction * depth)))
                 .FirstOrDefault();
-
-            targetedVRInteractable = hoveredInteractable;
         }
 
         MeshRenderer PreviouslyHighlightedInteractableRenderer;
@@ -708,7 +709,7 @@ namespace muskit.FlatScreen2
         public void Update()
         {
             if (Input.GetKeyDown(KeyCode.F9))
-                showWindow = !showWindow;
+                showMainWindow = !showMainWindow;
 
             if (!flatScreenEnabled)
                 return;
@@ -723,9 +724,7 @@ namespace muskit.FlatScreen2
                 ResetCameraRotation();
 
             HighlightObject(targetedVRInteractable);
-
-            // TODO: change to subtle cursor location indication
-            Cursor.visible = !Input.GetMouseButton(1);
+            // TODO: set cursor texture
 
             if (Input.GetMouseButtonDown(0)) // left mouse down
             {
@@ -749,12 +748,18 @@ namespace muskit.FlatScreen2
             // scroll wheel
             if (Input.mouseScrollDelta.y != 0)
             {
-                if (Input.GetMouseButton(1) || // zoom if not hovering over scrollable or if ctrl/RMB is being held
-                    Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
-                    targetedVRInteractable == null ||
-                    targetedVRInteractable.GetComponent<VRButton>() != null ||
-                    targetedVRInteractable.GetComponent<VRInteractableUIButton>() != null ||
-                    targetedVRInteractable.GetComponent<VRIHoverToggle>() != null)
+                // no one should ever write an if-statement like this
+                if (
+                        (zoomReqCtrlRMB &&
+                            (Input.GetMouseButton(1) || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+                        ) ||
+                        (!zoomReqCtrlRMB &&
+                            (targetedVRInteractable == null ||
+                            targetedVRInteractable.GetComponent<VRButton>() != null ||
+                            targetedVRInteractable.GetComponent<VRInteractableUIButton>() != null ||
+                            targetedVRInteractable.GetComponent<VRIHoverToggle>() != null)
+                        )
+                    )
                 {
                     int newFOV = currentFOV + (Input.mouseScrollDelta.y < 0 ? 5 : -5);
                     SetCameraFOV(newFOV);
@@ -797,13 +802,12 @@ namespace muskit.FlatScreen2
             if (!flatScreenEnabled || cameraEyeGameObject == null)
                 return;
 
-            MoveCamera();
+            MouseMoveCamera();
         }
-
+        
         int frameTick = 0;
         const int FRAMES_PER_TICK = 60;
         const int FRAMES_PER_SUBTICK = 5;
-        //bool wasOnTeam = false;
         public void FixedUpdate()
         {
             if (!flatScreenEnabled || cameraEyeGameObject == null)
@@ -819,35 +823,24 @@ namespace muskit.FlatScreen2
             if (frameTick >= FRAMES_PER_TICK) // every tick
             {
                 frameTick = 0;
-
-                if (!endMissionWindowAutoShown)
+                
+                // check if mission has ended
+                if (!endMissionWindowAutoShown && CheckMissionEnded())
                 {
-                    // check if mission has ended
-                    if (CheckMissionEnded())
-                    {
-                        FlatScreen2Plugin.Write("Ended mission!! Showing mission end window...");
-                        showEndMissionWindow = false;
-                        ToggleEndMissionWindow();
-                        endMissionWindowAutoShown = true;
-                    }
+                    FlatScreen2Plugin.Write("Ended mission!! Showing mission end window...");
+                    showEndMissionWindow = false;
+                    ToggleEndMissionWindow();
+                    endMissionWindowAutoShown = true;
                 }
 
-                SetTrackingObject(cameraEyeGameObject);
-
+                trackIRTransformer.trackedObject = cameraEyeGameObject.transform;
                 VRInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
-
-                //bool isOnTeam = VTOLMPSceneManager.instance?.localPlayer?.chosenTeam ?? false;
-                //if (isOnTeam != wasOnTeam)
-                //{
-                //    RegrabTracks();
-                //    wasOnTeam = isOnTeam;
-                //}
             }
         }
 
         public void OnDestroy()
         {
-            showWindow = false;
+            showMainWindow = false;
             showEndMissionWindow = false;
 
             if (flatScreenEnabled)

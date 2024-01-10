@@ -1,6 +1,8 @@
+using System;
+using System.IO;
 using System.Reflection;
-using Harmony;
 
+using Harmony;
 using UnityEngine;
 
 namespace muskit.FlatScreen2
@@ -15,7 +17,18 @@ namespace muskit.FlatScreen2
         {
             instance.Log(msg);
         }
-        
+
+        public static string AssemblyDirectory // TODO: get mod directory for custom cursor textures
+        {
+            get
+            {
+                string codeBase = Assembly.GetExecutingAssembly().CodeBase;
+                UriBuilder uri = new UriBuilder(codeBase);
+                string path = Uri.UnescapeDataString(uri.Path);
+                return Path.GetDirectoryName(path);
+            }
+        }
+
         // This method is run once, when the Mod Loader is done initialising this game object
         public override void ModLoaded()
         {
@@ -23,15 +36,16 @@ namespace muskit.FlatScreen2
             {
                 Write("WARNING: Tried to load another mod instance when one already exists! Destroying duplicate self.");
                 Destroy(this);
+                return;
             }
-            else
-            {
-                instance = this;
-                HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
-                harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
-                EnableFlatScreen();
-                base.ModLoaded();
-            }
+
+            instance = this;
+
+            Write($"Mod assembly path: {AssemblyDirectory}");
+            HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
+            harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
+            EnableFlatScreen();
+            base.ModLoaded();
         }
 
         public void EnableFlatScreen()
