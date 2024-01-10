@@ -18,17 +18,6 @@ namespace muskit.FlatScreen2
             instance.Log(msg);
         }
 
-        public static string AssemblyDirectory // TODO: get mod directory for custom cursor textures
-        {
-            get
-            {
-                string codeBase = Assembly.GetExecutingAssembly().CodeBase;
-                UriBuilder uri = new UriBuilder(codeBase);
-                string path = Uri.UnescapeDataString(uri.Path);
-                return Path.GetDirectoryName(path);
-            }
-        }
-
         // This method is run once, when the Mod Loader is done initialising this game object
         public override void ModLoaded()
         {
@@ -41,7 +30,7 @@ namespace muskit.FlatScreen2
 
             instance = this;
 
-            Write($"Mod assembly path: {AssemblyDirectory}");
+            Write($"Mod folder: {ModFolder}");
             HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
             harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
             EnableFlatScreen();

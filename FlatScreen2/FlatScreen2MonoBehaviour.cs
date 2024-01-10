@@ -30,20 +30,22 @@ namespace muskit.FlatScreen2
 
         public TrackIRTransformer trackIRTransformer { get; private set; }
 
+        // UI: main window
         private bool showMainWindow = true;
         private Rect mainWindowRect = new Rect(25, 25, 350, 525);
         private Vector2 mainWindowScroll;
 
-        public VRInteractable targetedVRInteractable;
-        public VRInteractable heldVRInteractable;
-        public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
-
-        // EndMission
+        // UI: EndMission
         private bool showEndMissionWindow = false;
         private bool endMissionWindowAutoShown = false;
         private Rect endMissionWindowRect = new Rect(Screen.width / 2 - 300, Screen.height / 2 - 250, 600, 500);
         private Vector2 endMisWinLogScroll = Vector2.zero;
         private EndMission endMission; // is always populated in a flying scene
+
+        // VRInteractable tracks
+        public VRInteractable targetedVRInteractable;
+        public VRInteractable heldVRInteractable;
+        public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
 
         // camera looking preferences
         public float mouseSensitivity = 2f; // PREFERENCE
