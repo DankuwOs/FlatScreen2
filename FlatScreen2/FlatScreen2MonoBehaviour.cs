@@ -34,7 +34,7 @@ namespace Triquetra.FlatScreen2
 
         // UI: main window
         private bool showMainWindow = true;
-        private Rect mainWindowRect = new Rect(25, 25, 350, 525);
+        private Rect mainWindowRect = new Rect(25, 25, 350, 550);
         private Vector2 mainWindowScroll;
 
         // UI: EndMission
@@ -227,151 +227,176 @@ namespace Triquetra.FlatScreen2
             GUILayout.Label("Press F9 to show/hide this window");
             GUILayout.Space(20);
 
-            if (!flatScreenEnabled)
+            if (flatScreenEnabled)
             {
-                bool toEnable = GUILayout.Button("Activate (cannot revert!!)");
+                mainWindowScroll = GUILayout.BeginScrollView(mainWindowScroll);
+                {
+                    if (cameraEyeGameObject != null || TryUpdateCameraTracks())
+                    {
+                        GUILayout.BeginHorizontal();
+                        {
+                            GUILayout.Label($"FOV: {currentFOV}");
+                            int newFOV = (int)Mathf.Round(GUILayout.HorizontalSlider(currentFOV, 30f, 120f));
+
+                            if (newFOV != currentFOV)
+                                SetCameraFOV(newFOV);
+                        }
+                        GUILayout.EndHorizontal();
+                    }
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label($"Mouse Sensitivity: {Preferences.instance.mouseSensitivity}");
+                    Preferences.instance.mouseSensitivity = (int) Mathf.Round(
+                        GUILayout.HorizontalSlider(Preferences.instance.mouseSensitivity, 1f, 9f)
+                    );
+                    GUILayout.EndHorizontal();
+
+                    Preferences.instance.zoomReqCtrlRMB = 
+                        GUILayout.Toggle(
+                            Preferences.instance.zoomReqCtrlRMB,
+                            " Require Ctrl/RMB to scroll-zoom\n (might be useful for trackpad pinch-zoomers!"
+                        );
+
+                    LimitXRotation =
+                        Preferences.instance.limitXRot = GUILayout.Toggle(LimitXRotation, " Limit X Rotation");
+                    LimitYRotation =
+                        Preferences.instance.limitYRot = GUILayout.Toggle(LimitYRotation, " Limit Y Rotation");
+
+                    GUILayout.Space(25);
+
+                    GUILayout.BeginHorizontal();
+                    {
+                        GUILayout.Label($"Hovered VRInteractable:");
+                        if (targetedVRInteractable != null)
+                            GUILayout.Label(targetedVRInteractable?.interactableName ?? "???");
+                        else
+                            GUILayout.Label("[None]");
+                    }
+                    GUILayout.EndHorizontal();
+
+                    //if (targetedVRInteractable != null)
+                    //    foreach (var comp in targetedVRInteractable?.GetComponents<MonoBehaviour>())
+                    //    {
+                    //        GUILayout.Label(comp.GetType().Name);
+                    //    }
+
+                    GUILayout.BeginHorizontal();
+                    {
+                        GUILayout.Label($"Held-Down VRInteractable:");
+                        if (heldVRInteractable != null)
+                            GUILayout.Label(heldVRInteractable?.interactableName ?? "???");
+                        else
+                            GUILayout.Label("[None]");
+                    }
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.Label("Use the scroll wheel on non-integer knobs");
+
+                    GUILayout.Space(20);
+
+                    if (GUILayout.Button("Fix Camera"))
+                    {
+                        RegrabTracks();
+                    }
+
+                    if (GUILayout.Button("Reset Camera Rotation"))
+                        ResetCameraRotation();
+
+                    if (GUILayout.Button("View: " + (viewIsSpec ? "S-CAM" : "First Person")))
+                    {
+                        viewIsSpec = !viewIsSpec;
+
+                        SetSpecActive(viewIsSpec);
+                        SetAvatarVisibility(viewIsSpec);
+                    }
+
+                    GUI.enabled = true;
+
+                    /*if (IsReadyRoomScene())
+                    {
+                        if (GUILayout.Button("Quick Select Vehicle"))
+                        {
+                            PilotSelectUI pilotSelectUI = FindObjectOfType<PilotSelectUI>();
+                            pilotSelectUI.StartSelectedPilotButton();
+                            pilotSelectUI.SelectVehicleButton();
+                        }
+                    }*/
+
+                    GUILayout.Space(30);
+
+                    if (GUILayout.Button(trackIRTransformer.IsRunning ? "Stop TrackIR" : "Start TrackIR"))
+                    {
+                        if (trackIRTransformer.IsRunning)
+                        {
+                            // stop tracking
+                            trackIRTransformer.StopTracking();
+                        }
+                        else
+                        {
+                            // start tracking
+                            ResetCameraRotation();
+                            trackIRTransformer.StartTracking();
+                        }
+                    }
+
+                    GUILayout.Space(30);
+                    /*
+                    Camera camera = GetEyeCamera();
+                    if (camera != null)
+                    {
+                        GUILayout.Label($"Camera: {camera.name}");
+                        GUILayout.Label($"Camera GameObject: {GetEyeCameraGameObject()?.name}");
+                        GUILayout.Label($"Depth: {camera.depth}");
+                        GUILayout.Label($"Enabled: {camera.enabled}");
+                        GUILayout.Label($"Is Active and Enabled: {camera.isActiveAndEnabled}");
+                        GUILayout.Label($"Quad Parent: {camera.transform.parent?.parent?.parent?.parent?.name}");
+                    }
+
+                    GUILayout.Space(30);
+
+                    if (targetedVRInteractable != null)
+                    {
+                        VRThrottle throttle = targetedVRInteractable.GetComponent<VRThrottle>();
+                        GUILayout.Label($"Throttle: {throttle}");
+                        GUILayout.Label($"Throttle Transform: {throttle?.throttleTransform?.name}");
+                    }*/
+                }
+                GUILayout.EndScrollView();
+            }
+            else
+            {
+                bool toEnable = GUILayout.Button("Activate FlatScreen2");
+                GUILayout.Space(-5);
+                GUILayout.BeginHorizontal();
+                {
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label("WARNING: MUST RESTART TO GO BACK TO VR");
+                    GUILayout.FlexibleSpace();
+                }
+                GUILayout.EndHorizontal();
                 if (toEnable)
                 {
                     flatScreenEnabled = true;
                     Activate();
                 }
-
-                return;
             }
-
-            mainWindowScroll = GUILayout.BeginScrollView(mainWindowScroll);
+            
+            // Credits
+            GUILayout.BeginHorizontal();
             {
-                if (cameraEyeGameObject != null || TryUpdateCameraTracks())
-                {
-                    GUILayout.BeginHorizontal();
-                    {
-                        GUILayout.Label($"FOV: {currentFOV}");
-                        int newFOV = (int)Mathf.Round(GUILayout.HorizontalSlider(currentFOV, 30f, 120f));
-
-                        if (newFOV != currentFOV)
-                            SetCameraFOV(newFOV);
-                    }
-                    GUILayout.EndHorizontal();
-                }
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label($"Mouse Sensitivity: {Preferences.instance.mouseSensitivity}");
-                Preferences.instance.mouseSensitivity = (int) Mathf.Round(
-                    GUILayout.HorizontalSlider(Preferences.instance.mouseSensitivity, 1f, 9f)
-                );
-                GUILayout.EndHorizontal();
-
-                Preferences.instance.zoomReqCtrlRMB = 
-                    GUILayout.Toggle(
-                        Preferences.instance.zoomReqCtrlRMB,
-                        " Require Ctrl/RMB to scroll-zoom\n (might be useful for trackpad pinch-zoomers!"
-                    );
-
-                LimitXRotation =
-                    Preferences.instance.limitXRot = GUILayout.Toggle(LimitXRotation, " Limit X Rotation");
-                LimitYRotation =
-                    Preferences.instance.limitYRot = GUILayout.Toggle(LimitYRotation, " Limit Y Rotation");
-
-                GUILayout.Space(25);
-
-                GUILayout.BeginHorizontal();
-                {
-                    GUILayout.Label($"Hovered VRInteractable:");
-                    if (targetedVRInteractable != null)
-                        GUILayout.Label(targetedVRInteractable?.interactableName ?? "???");
-                    else
-                        GUILayout.Label("[None]");
-                }
-                GUILayout.EndHorizontal();
-
-                //if (targetedVRInteractable != null)
-                //    foreach (var comp in targetedVRInteractable?.GetComponents<MonoBehaviour>())
-                //    {
-                //        GUILayout.Label(comp.GetType().Name);
-                //    }
-
-                GUILayout.BeginHorizontal();
-                {
-                    GUILayout.Label($"Held-Down VRInteractable:");
-                    if (heldVRInteractable != null)
-                        GUILayout.Label(heldVRInteractable?.interactableName ?? "???");
-                    else
-                        GUILayout.Label("[None]");
-                }
-                GUILayout.EndHorizontal();
-
-                GUILayout.Label("Use the scroll wheel on non-integer knobs");
-
-                GUILayout.Space(20);
-
-                if (GUILayout.Button("Fix Camera"))
-                {
-                    RegrabTracks();
-                }
-
-                if (GUILayout.Button("Reset Camera Rotation"))
-                    ResetCameraRotation();
-
-                if (GUILayout.Button("View: " + (viewIsSpec ? "S-CAM" : "First Person")))
-                {
-                    viewIsSpec = !viewIsSpec;
-
-                    SetSpecActive(viewIsSpec);
-                    SetAvatarVisibility(viewIsSpec);
-                }
-
-                GUI.enabled = true;
-
-                /*if (IsReadyRoomScene())
-                {
-                    if (GUILayout.Button("Quick Select Vehicle"))
-                    {
-                        PilotSelectUI pilotSelectUI = FindObjectOfType<PilotSelectUI>();
-                        pilotSelectUI.StartSelectedPilotButton();
-                        pilotSelectUI.SelectVehicleButton();
-                    }
-                }*/
-
-                GUILayout.Space(30);
-
-                if (GUILayout.Button(trackIRTransformer.IsRunning ? "Stop Tracking" : "Start Tracking"))
-                {
-                    if (trackIRTransformer.IsRunning)
-                    {
-                        // stop tracking
-                        trackIRTransformer.StopTracking();
-                    }
-                    else
-                    {
-                        // start tracking
-                        ResetCameraRotation();
-                        trackIRTransformer.StartTracking();
-                    }
-                }
-
-                GUILayout.Space(30);
-                /*
-                Camera camera = GetEyeCamera();
-                if (camera != null)
-                {
-                    GUILayout.Label($"Camera: {camera.name}");
-                    GUILayout.Label($"Camera GameObject: {GetEyeCameraGameObject()?.name}");
-                    GUILayout.Label($"Depth: {camera.depth}");
-                    GUILayout.Label($"Enabled: {camera.enabled}");
-                    GUILayout.Label($"Is Active and Enabled: {camera.isActiveAndEnabled}");
-                    GUILayout.Label($"Quad Parent: {camera.transform.parent?.parent?.parent?.parent?.name}");
-                }
-
-                GUILayout.Space(30);
-
-                if (targetedVRInteractable != null)
-                {
-                    VRThrottle throttle = targetedVRInteractable.GetComponent<VRThrottle>();
-                    GUILayout.Label($"Throttle: {throttle}");
-                    GUILayout.Label($"Throttle Transform: {throttle?.throttleTransform?.name}");
-                }*/
+                GUILayout.FlexibleSpace();
+                GUILayout.Label("FlatScreen2 by muskit");
+                GUILayout.FlexibleSpace();
             }
-            GUILayout.EndScrollView();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(-8);
+            GUILayout.BeginHorizontal();
+            {
+                GUILayout.FlexibleSpace();
+                GUILayout.Label("FlatScreen originally by frdhog");
+                GUILayout.FlexibleSpace();
+            }
+            GUILayout.EndHorizontal();
         }
 
         private void GUIEndMissionWindow(int id)
@@ -425,7 +450,7 @@ namespace Triquetra.FlatScreen2
             GUILayout.EndHorizontal();
             GUILayout.Space(-7);
 
-            GUILayout.BeginScrollView(endMisWinLogScroll, GUILayout.MaxHeight(400), GUILayout.ExpandHeight(true));
+            endMisWinLogScroll = GUILayout.BeginScrollView(endMisWinLogScroll, GUILayout.MaxHeight(400), GUILayout.ExpandHeight(true));
             {
                 var stringBuilder = new System.Text.StringBuilder();
                 foreach (FlightLogger.LogEntry logEntry in FlightLogger.GetLog())
@@ -757,7 +782,10 @@ namespace Triquetra.FlatScreen2
         public void Update()
         {
             if (Input.GetKeyDown(KeyCode.F9))
+            {
                 showMainWindow = !showMainWindow;
+                Preferences.instance.Save();
+            }
 
             if (!flatScreenEnabled)
                 return;
