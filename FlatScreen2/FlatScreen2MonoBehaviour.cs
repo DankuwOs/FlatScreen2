@@ -1,5 +1,6 @@
 ﻿
 using System.Reflection;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -17,8 +18,6 @@ namespace muskit.FlatScreen2
     public class FlatScreen2MonoBehaviour : MonoBehaviour
     {
         // https://vtolvr-mods.com/viewbugs/zj7ylyrf/
-        // TODO: Usable with VR headset active (disable VR to control cameras)
-            // - Be able to start flight without putting helmet on
         // TODO: Saved preferences
         // TODO?: Custom cursors
         // TODO?: WASDEQ controls
@@ -94,6 +93,9 @@ namespace muskit.FlatScreen2
 
         public static Camera GetEyeCamera()
         {
+            if (VRHead.instance != null)
+                return VRHead.instance.cam; // TEST
+
             IEnumerable<Camera> cameras = GameObject.FindObjectsOfType<Camera>(false)
                 .Where(c => c.name == "Camera (eye)" && c.isActiveAndEnabled)
                 .OrderByDescending(c => c.depth);
@@ -133,11 +135,8 @@ namespace muskit.FlatScreen2
                 endMission = GameObject.FindObjectOfType<EndMission>(false);
             if (endMission == null)
                 return false;
-            
-            if (endMission.completeObject.activeSelf || endMission.failedObject.activeSelf)
-                return true;
 
-            return false;
+            return !endMission.inProgressObject.activeSelf;
         }
 
         public FlatScreen2MonoBehaviour()
@@ -155,17 +154,21 @@ namespace muskit.FlatScreen2
         {
             FlatScreen2Plugin.Write("Activating!");
             VRHead.OnVRHeadChanged += ResetState;
-            SceneManager.activeSceneChanged += (scn1, scn2) => VideoSettings();
+            SceneManager.activeSceneChanged += OnSceneChange;
 
             trackIRTransformer = gameObject.AddComponent<TrackIRTransformer>();
 
             VideoSettings();
             ResetState();
-
-            // TODO: set camera parameters to look less warped
         }
 
-        public void ResetState() // run on respawn
+        public void OnSceneChange(Scene sc1, Scene scn2)
+        {
+            VideoSettings();
+            ResetState();
+        }
+
+        public void ResetState()
         {
             FlatScreen2Plugin.Write("State reset!");
             showEndMissionWindow = false;
@@ -180,9 +183,24 @@ namespace muskit.FlatScreen2
         public void VideoSettings()
         {
             FlatScreen2Plugin.Write("Setting video settings...");
-            VRUtils.DisableVR();
+            StartCoroutine(DisableVR());
             Application.targetFrameRate = Mathf.Min(120, Screen.currentResolution.refreshRate);
             QualitySettings.antiAliasing = 2;
+        }
+
+        IEnumerator DisableVR()
+        {
+            VRUtils.DisableVR();
+            yield return 0; // allow VR to fully disable by next frame
+
+            // reset camera transform
+            cameraEyeGameObject.transform.localPosition = Vector3.zero;
+            cameraEyeGameObject.transform.localRotation = Quaternion.identity;
+
+            // reset playspace transform
+            var ps = cameraEyeGameObject.transform.parent;
+            ps.localPosition = new Vector3(0, 1.1f, 0);
+            ps.localRotation = Quaternion.identity;
         }
 
         public void OnGUI()
@@ -244,10 +262,7 @@ namespace muskit.FlatScreen2
                 LimitXRotation = GUILayout.Toggle(LimitXRotation, " Limit X Rotation");
                 LimitYRotation = GUILayout.Toggle(LimitYRotation, " Limit Y Rotation");
 
-                if (GUILayout.Button("Reset Camera Rotation"))
-                    ResetCameraRotation();
-
-                GUILayout.Space(30);
+                GUILayout.Space(25);
 
                 GUILayout.BeginHorizontal();
                 {
@@ -279,10 +294,13 @@ namespace muskit.FlatScreen2
 
                 GUILayout.Space(20);
 
-                if (GUILayout.Button("Reset Camera"))
+                if (GUILayout.Button("Fix Camera"))
                 {
                     RegrabTracks();
                 }
+
+                if (GUILayout.Button("Reset Camera Rotation"))
+                    ResetCameraRotation();
 
                 if (GUILayout.Button("View: " + (viewIsSpec ? "S-CAM" : "First Person")))
                 {
@@ -542,12 +560,30 @@ namespace muskit.FlatScreen2
 
                 if (cameraEyeGameObject != null)
                 {
+                    trackIRTransformer.trackedObject = cameraEyeGameObject.transform;
                     cameraHMDGameObject = cameraEyeGameObject.transform.Find("Camera HMD HUD")?.gameObject;
                     cameraHelmetGameObject = cameraEyeGameObject.transform.Find("Camera (eye) Helmet")?.gameObject;
-                }
 
-                if (cameraHelmetGameObject != null)
-                    cameraHelmetGameObject.GetComponent<Camera>().fieldOfView = 20;
+                    var res = Screen.currentResolution;
+
+                    // unwarp cameras if activating during VR session
+                    cameraEyeGameObject.GetComponent<Camera>()
+                        .pixelRect = new Rect(0, 0, res.width, res.height);
+
+                    if (cameraHMDGameObject != null)
+                    {
+                        cameraHMDGameObject.GetComponent<Camera>()
+                            .pixelRect = new Rect(0, 0, res.width, res.height);
+                    }
+
+                    if (cameraHelmetGameObject != null)
+                    {
+                        cameraHelmetGameObject.GetComponent<Camera>()
+                            .pixelRect = new Rect(0, 0, res.width, res.height);
+
+                        cameraHelmetGameObject.GetComponent<Camera>().fieldOfView = 20;
+                    }
+                }
             }
 
             return cameraEyeGameObject != null;
@@ -829,13 +865,12 @@ namespace muskit.FlatScreen2
                 // check if mission has ended
                 if (!endMissionWindowAutoShown && CheckMissionEnded())
                 {
-                    FlatScreen2Plugin.Write("Ended mission!! Showing mission end window...");
+                    FlatScreen2Plugin.Write("Ended mission! Auto-showing mission end window...");
                     showEndMissionWindow = false;
                     ToggleEndMissionWindow();
                     endMissionWindowAutoShown = true;
                 }
 
-                trackIRTransformer.trackedObject = cameraEyeGameObject.transform;
                 VRInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
             }
         }
@@ -846,7 +881,10 @@ namespace muskit.FlatScreen2
             showEndMissionWindow = false;
 
             if (flatScreenEnabled)
+            {
+                SceneManager.activeSceneChanged -= OnSceneChange;
                 VRHead.OnVRHeadChanged -= ResetState;
+            }
 
             instance = null;
         }
