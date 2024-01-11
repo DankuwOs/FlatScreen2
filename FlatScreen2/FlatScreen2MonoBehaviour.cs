@@ -10,15 +10,13 @@ using UnityEngine.UI;
 
 using VTOLVR.Multiplayer;
 
-using Triquetra;
 using Triquetra.FlatScreen.TrackIR;
 
-namespace muskit.FlatScreen2
+namespace Triquetra.FlatScreen2
 {
     public class FlatScreen2MonoBehaviour : MonoBehaviour
     {
         // https://vtolvr-mods.com/viewbugs/zj7ylyrf/
-        // TODO: Saved preferences
         // TODO?: Custom cursors
         // TODO?: WASDEQ controls
         // TODO?: Bobblehead gets a VRInteractable
@@ -28,6 +26,11 @@ namespace muskit.FlatScreen2
         public bool flatScreenEnabled { get; private set; } = false;
 
         public TrackIRTransformer trackIRTransformer { get; private set; }
+
+        // tick loop tracking
+        const int FRAMES_PER_TICK = 60;
+        const int FRAMES_PER_SUBTICK = 5;
+        int frameTick = 0;
 
         // UI: main window
         private bool showMainWindow = true;
@@ -47,9 +50,8 @@ namespace muskit.FlatScreen2
         public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
 
         // camera looking preferences
-        public float mouseSensitivity = 2f; // PREFERENCE
-        private float rotLimX = 160f; // PREFERENCE; set to -1 to disable
-        private float rotLimY = 89f; // PREFERENCE; set to -1 to disable
+        private float rotLimX = 160f; // set to -1 to disable
+        private float rotLimY = 89f; // set to -1 to disable
         public bool LimitXRotation
         {
             get { return rotLimX >= 0; }
@@ -63,7 +65,7 @@ namespace muskit.FlatScreen2
 
         // current FOV
         public const int DEFAULT_FOV = 60;
-        int currentFOV = DEFAULT_FOV; // PREFERENCE
+        int currentFOV = DEFAULT_FOV;
 
         // camera tracks
         private GameObject cameraEyeGameObject;
@@ -77,7 +79,6 @@ namespace muskit.FlatScreen2
         private GameObject playerRightHand = null;
 
         private bool viewIsSpec = false;
-        private bool zoomReqCtrlRMB = false; // PREFERENCE
 
         public static bool IsFlyingScene()
         {
@@ -164,6 +165,7 @@ namespace muskit.FlatScreen2
 
         public void OnSceneChange(Scene sc1, Scene scn2)
         {
+            Preferences.instance.Save();
             VideoSettings();
             ResetState();
         }
@@ -253,14 +255,22 @@ namespace muskit.FlatScreen2
                 }
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label($"Mouse Sensitivity: {mouseSensitivity}");
-                mouseSensitivity = Mathf.Round(GUILayout.HorizontalSlider(mouseSensitivity, 1f, 9f));
+                GUILayout.Label($"Mouse Sensitivity: {Preferences.instance.mouseSensitivity}");
+                Preferences.instance.mouseSensitivity = (int) Mathf.Round(
+                    GUILayout.HorizontalSlider(Preferences.instance.mouseSensitivity, 1f, 9f)
+                );
                 GUILayout.EndHorizontal();
 
-                zoomReqCtrlRMB = GUILayout.Toggle(zoomReqCtrlRMB, " Require Ctrl/RMB to scroll-zoom\n (might be useful for trackpad pinch-zoomers!");
+                Preferences.instance.zoomReqCtrlRMB = 
+                    GUILayout.Toggle(
+                        Preferences.instance.zoomReqCtrlRMB,
+                        " Require Ctrl/RMB to scroll-zoom\n (might be useful for trackpad pinch-zoomers!"
+                    );
 
-                LimitXRotation = GUILayout.Toggle(LimitXRotation, " Limit X Rotation");
-                LimitYRotation = GUILayout.Toggle(LimitYRotation, " Limit Y Rotation");
+                LimitXRotation =
+                    Preferences.instance.limitXRot = GUILayout.Toggle(LimitXRotation, " Limit X Rotation");
+                LimitYRotation =
+                    Preferences.instance.limitYRot = GUILayout.Toggle(LimitYRotation, " Limit Y Rotation");
 
                 GUILayout.Space(25);
 
@@ -506,8 +516,8 @@ namespace muskit.FlatScreen2
         {
             if (Input.GetMouseButton(1) && !trackIRTransformer.IsRunning)
             {
-                cameraRotation.x += Input.GetAxis("Mouse X") * mouseSensitivity;
-                cameraRotation.y += Input.GetAxis("Mouse Y") * mouseSensitivity;
+                cameraRotation.x += Input.GetAxis("Mouse X") * Preferences.instance.mouseSensitivity;
+                cameraRotation.y += Input.GetAxis("Mouse Y") * Preferences.instance.mouseSensitivity;
                 if (rotLimX > 0)
                     cameraRotation.x = Mathf.Clamp(cameraRotation.x, -rotLimX, rotLimX);
                 if (rotLimY > 0)
@@ -786,12 +796,12 @@ namespace muskit.FlatScreen2
             // scroll wheel
             if (Input.mouseScrollDelta.y != 0)
             {
-                // no one should ever write an if-statement like this
+                // eww
                 if (
-                        (zoomReqCtrlRMB &&
+                        (Preferences.instance.zoomReqCtrlRMB &&
                             (Input.GetMouseButton(1) || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
                         ) ||
-                        (!zoomReqCtrlRMB &&
+                        (!Preferences.instance.zoomReqCtrlRMB &&
                             (targetedVRInteractable == null ||
                             targetedVRInteractable.GetComponent<VRButton>() != null ||
                             targetedVRInteractable.GetComponent<VRInteractableUIButton>() != null ||
@@ -843,9 +853,7 @@ namespace muskit.FlatScreen2
             MouseMoveCamera();
         }
         
-        int frameTick = 0;
-        const int FRAMES_PER_TICK = 60;
-        const int FRAMES_PER_SUBTICK = 5;
+        // tick loop
         public void FixedUpdate()
         {
             if (!flatScreenEnabled || cameraEyeGameObject == null)

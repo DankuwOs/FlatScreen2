@@ -1,0 +1,72 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.Serialization;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Xml.Serialization;
+
+namespace Triquetra.FlatScreen2
+{
+    public class Preferences
+    {
+        public static Preferences instance { get; private set; }
+
+        public bool zoomReqCtrlRMB = false;
+        public bool limitXRot = true;
+        public bool limitYRot = true;
+        public int mouseSensitivity = 2;
+
+        [XmlIgnore]
+        public string filePath;
+
+        public Preferences()
+        {
+            instance = this;
+            filePath = PilotSaveManager.saveDataPath + "/flatscreen2.xml";
+        }
+
+        public void Save()
+        {
+            FlatScreen2Plugin.Write("Saving preferences...");
+            var serializer = new XmlSerializer(typeof(Preferences));
+            using (TextWriter writer = new StreamWriter(filePath))
+            {
+                serializer.Serialize(writer, this);
+            }
+            FlatScreen2Plugin.Write("Preferences saved!");
+        }
+
+        public void Load()
+        {
+            if (File.Exists(filePath))
+            {
+                FlatScreen2Plugin.Write("Loading preferences...");
+                XmlSerializer serializer = new XmlSerializer(typeof(Preferences));
+                using (Stream reader = new FileStream(filePath, FileMode.Open))
+                {
+                    var load = (Preferences)serializer.Deserialize(reader);
+
+                    // add more settings here as needed
+                    zoomReqCtrlRMB = load.zoomReqCtrlRMB;
+                    limitXRot = load.limitXRot;
+                    limitYRot = load.limitYRot;
+                    mouseSensitivity = load.mouseSensitivity;
+                }
+                FlatScreen2Plugin.Write("Preferences loaded!");
+            }
+            else
+            {
+                FlatScreen2Plugin.Write("Could not find preferences file.");
+                Save();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            Save();
+        }
+    }
+}
+

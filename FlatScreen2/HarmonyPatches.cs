@@ -2,7 +2,7 @@
 
 using UnityEngine.XR;
 
-namespace muskit.FlatScreen2
+namespace Triquetra.FlatScreen2
 {
     [HarmonyPatch(typeof(XRLoaderSelector), nameof(XRLoaderSelector._StartXR))]
     internal class StartXRSkipper

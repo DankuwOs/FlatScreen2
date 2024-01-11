@@ -5,14 +5,19 @@ using System.Reflection;
 using Harmony;
 using UnityEngine;
 
-namespace muskit.FlatScreen2
+namespace Triquetra.FlatScreen2
 {
     public class FlatScreen2Plugin : VTOLMOD
     {
-        private GameObject monoBehaviour;
-
         protected static FlatScreen2Plugin instance;
 
+        public GameObject mbInstance;
+        public Preferences pref;
+
+        /// <summary>
+        /// Print to stdout with the mod name prepended.
+        /// </summary>
+        /// <param name="msg"></param>
         public static void Write(string msg)
         {
             instance.Log(msg);
@@ -33,26 +38,30 @@ namespace muskit.FlatScreen2
             Write($"Mod folder: {ModFolder}");
             HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
             harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
-            EnableFlatScreen();
+
+            InitPreferences();
+            InitMonoBehaviour();
+
             base.ModLoaded();
         }
 
-        public void EnableFlatScreen()
+        public void InitPreferences()
         {
-            if (monoBehaviour != null)
+            if (pref != null)
                 return;
-            Log("Creating FlatScreen2MonoBehaviour");
-            monoBehaviour = new GameObject();
-            monoBehaviour.AddComponent<FlatScreen2MonoBehaviour>();
-            GameObject.DontDestroyOnLoad(monoBehaviour);
+
+            pref = new Preferences();
+            pref.Load();
         }
 
-        private void DisableFlatScreen()
+        public void InitMonoBehaviour()
         {
-            if (monoBehaviour == null)
+            if (mbInstance != null)
                 return;
-            Log("Destroying FlatScreen2MonoBehaviour");
-            GameObject.Destroy(monoBehaviour);
+            Log("Creating FlatScreen2MonoBehaviour");
+            mbInstance = new GameObject();
+            mbInstance.AddComponent<FlatScreen2MonoBehaviour>();
+            GameObject.DontDestroyOnLoad(mbInstance);
         }
     }
 }
