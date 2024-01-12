@@ -11,7 +11,7 @@ namespace Triquetra.FlatScreen2
         {
             if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
             {
-                FlatScreen2Plugin.Write("FlatScreen is enabled! Skipping attempt to start XR...");
+                Plugin.Write("FlatScreen is enabled! Skipping attempt to start XR...");
                 return false;
             }
             return true;
@@ -28,7 +28,7 @@ namespace Triquetra.FlatScreen2
         {
             if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
             {
-                FlatScreen2Plugin.Write("FlatScreen is enabled! Enabling XR to skip scene loader's VR check...");
+                Plugin.Write("FlatScreen is enabled! Enabling XR to skip scene loader's VR check...");
                 XRSettings.enabled = true;
             }
         }
@@ -37,7 +37,7 @@ namespace Triquetra.FlatScreen2
         {
             if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
             {
-                FlatScreen2Plugin.Write("Done loading scene, disabling XR.");
+                Plugin.Write("Done loading scene, disabling XR.");
                 XRSettings.enabled = false;
             }
         }
@@ -50,7 +50,7 @@ namespace Triquetra.FlatScreen2
         {
             if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
             {
-                FlatScreen2Plugin.Write("Player spawn! Resetting state...");
+                Plugin.Write("Player spawn! Resetting state...");
                 FlatScreen2MonoBehaviour.instance?.ResetState();
             }
         }
@@ -63,7 +63,7 @@ namespace Triquetra.FlatScreen2
         {
             if (FlatScreen2MonoBehaviour.instance.flatScreenEnabled)
             {
-                FlatScreen2Plugin.Write("Teleporting loading helmet to equip...");
+                Plugin.Write("Teleporting loading helmet to equip...");
 
                 var traverse = new Traverse(__instance);
                 traverse.Field("grabbed").SetValue(true);

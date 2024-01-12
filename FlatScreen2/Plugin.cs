@@ -7,9 +7,9 @@ using UnityEngine;
 
 namespace Triquetra.FlatScreen2
 {
-    public class FlatScreen2Plugin : VTOLMOD
+    public class Plugin : VTOLMOD
     {
-        protected static FlatScreen2Plugin instance;
+        protected static Plugin instance;
 
         public GameObject mbInstance;
         public Preferences pref;
@@ -18,7 +18,7 @@ namespace Triquetra.FlatScreen2
         /// Print to stdout with the mod name prepended.
         /// </summary>
         /// <param name="msg"></param>
-        public static void Write(string msg)
+        public static void Write(object msg)
         {
             instance.Log(msg);
         }

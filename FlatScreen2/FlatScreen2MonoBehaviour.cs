@@ -47,7 +47,7 @@ namespace Triquetra.FlatScreen2
         // VRInteractable tracks
         public VRInteractable targetedVRInteractable;
         public VRInteractable heldVRInteractable;
-        public IEnumerable<VRInteractable> VRInteractables = new List<VRInteractable>();
+        public IEnumerable<VRInteractable> vrInteractables = new List<VRInteractable>();
 
         // camera looking preferences
         private float rotLimX = 160f; // set to -1 to disable
@@ -78,53 +78,13 @@ namespace Triquetra.FlatScreen2
         private GameObject playerLeftHand = null;
         private GameObject playerRightHand = null;
 
+        // cursor hiding
+        const int CURSOR_HIDE_AFTER = 5;
+        private float cursorHideTimer = CURSOR_HIDE_AFTER;
+
+        private bool cursorOverWindow = false;
+
         private bool viewIsSpec = false;
-
-        public static bool IsFlyingScene()
-        {
-            int buildIndex = SceneManager.GetActiveScene().buildIndex;
-            return buildIndex == 7 || buildIndex == 11;
-        }
-
-        public static bool IsReadyRoomScene()
-        {
-            int buildIndex = SceneManager.GetActiveScene().buildIndex;
-            return buildIndex == 2;
-        }
-
-        public static Camera GetEyeCamera()
-        {
-            if (VRHead.instance != null)
-                return VRHead.instance.cam; // TEST
-
-            IEnumerable<Camera> cameras = GameObject.FindObjectsOfType<Camera>(false)
-                .Where(c => c.name == "Camera (eye)" && c.isActiveAndEnabled)
-                .OrderByDescending(c => c.depth);
-
-            if (cameras.Any(x => x.gameObject?.layer == LayerMask.NameToLayer("MPBriefing")))
-            {
-                if (VTOLMPSceneManager.instance.localPlayer.chosenTeam)
-                {
-                    GameObject localAvatarObject = typeof(VTOLMPSceneManager)
-                        .GetField("localAvatarObj", BindingFlags.Instance | BindingFlags.NonPublic)?
-                        .GetValue(VTOLMPSceneManager.instance) as GameObject;
-                    if (localAvatarObject != null)
-                    {
-                        Camera localAvatarCam = localAvatarObject?.GetComponentInChildren<Camera>(false);
-                        if (localAvatarCam != null)
-                        {
-                            return localAvatarCam;
-                        }
-                    }
-                }
-            }
-            return cameras.FirstOrDefault();
-        }
-
-        public static IEnumerable<Camera> GetSpectatorCameras()
-        {
-            return GameObject.FindObjectsOfType<Camera>(true).Where(c => c.name == "FlybyCam" || c.name == "flybyHMCScam");
-        }
 
         /// <summary>
         /// Check if the mission has ended. Also populates this.endMission if it's null.
@@ -144,7 +104,7 @@ namespace Triquetra.FlatScreen2
         {
             if (instance != null)
             {
-                FlatScreen2Plugin.Write("WARNING: Tried to create another MonoBehaviour instance when one already exists! Destroying self.");
+                Plugin.Write("WARNING: Tried to create another MonoBehaviour instance when one already exists! Destroying self.");
                 Destroy(this);
             }
             else
@@ -153,7 +113,7 @@ namespace Triquetra.FlatScreen2
 
         public void Activate()
         {
-            FlatScreen2Plugin.Write("Activating!");
+            Plugin.Write("Activating!");
             VRHead.OnVRHeadChanged += ResetState;
             SceneManager.activeSceneChanged += OnSceneChange;
 
@@ -172,7 +132,7 @@ namespace Triquetra.FlatScreen2
 
         public void ResetState()
         {
-            FlatScreen2Plugin.Write("State reset!");
+            Plugin.Write("State reset!");
             showEndMissionWindow = false;
             endMissionWindowAutoShown = false;
             endMisWinLogScroll = Vector2.zero;
@@ -184,7 +144,7 @@ namespace Triquetra.FlatScreen2
 
         public void VideoSettings()
         {
-            FlatScreen2Plugin.Write("Setting video settings...");
+            Plugin.Write("Setting video settings...");
             StartCoroutine(DisableVR());
             Application.targetFrameRate = Mathf.Min(120, Screen.currentResolution.refreshRate);
             QualitySettings.antiAliasing = 2;
@@ -207,10 +167,22 @@ namespace Triquetra.FlatScreen2
 
         public void OnGUI()
         {
+            cursorOverWindow = false;
+            var mousePos = Input.mousePosition;
+            mousePos.y = Screen.height - mousePos.y;
+
             if (showMainWindow)
+            {
                 mainWindowRect = GUI.Window(405, mainWindowRect, GUIMainWindow, "FlatScreen 2 Control Panel");
+                if (mainWindowRect.Contains(mousePos))
+                    cursorOverWindow = true;
+            }
             if (endMission != null && showEndMissionWindow)
+            {
                 endMissionWindowRect = GUI.Window(406, endMissionWindowRect, GUIEndMissionWindow, "FlatScreen 2 End Mission");
+                if (endMissionWindowRect.Contains(mousePos))
+                    cursorOverWindow = true;
+            }
         }
 
         public void ToggleEndMissionWindow()
@@ -224,7 +196,9 @@ namespace Triquetra.FlatScreen2
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
 
-            GUILayout.Label("Press F9 to show/hide this window");
+            GUILayout.Label("F9: show/hide this window");
+            GUILayout.Space(-8);
+            GUILayout.Label("Ctrl+Z: reset camera rotation");
             GUILayout.Space(20);
 
             if (flatScreenEnabled)
@@ -385,7 +359,7 @@ namespace Triquetra.FlatScreen2
             GUILayout.BeginHorizontal();
             {
                 GUILayout.FlexibleSpace();
-                GUILayout.Label("FlatScreen2 by muskit");
+                GUILayout.Label("FlatScreen 2 by muskit");
                 GUILayout.FlexibleSpace();
             }
             GUILayout.EndHorizontal();
@@ -519,19 +493,19 @@ namespace Triquetra.FlatScreen2
             }
             
             // body visiblity
-            FlatScreen2Plugin.Write($"Setting body ({playerBody}) vis to {isVis}");
+            Plugin.Write($"Setting body ({playerBody}) vis to {isVis}");
             playerBody?.SetActive(isVis);
 
             // hands visibility
-            FlatScreen2Plugin.Write($"Setting left hand ({playerLeftHand}) vis to {isVis}");
+            Plugin.Write($"Setting left hand ({playerLeftHand}) vis to {isVis}");
             playerLeftHand?.SetActive(isVis);
-            FlatScreen2Plugin.Write($"Setting right hand ({playerRightHand}) vis to {isVis}");
+            Plugin.Write($"Setting right hand ({playerRightHand}) vis to {isVis}");
             playerRightHand?.SetActive(isVis);
         }
 
         public void SetSpecActive(bool active)
         {
-            foreach (Camera specCam in GetSpectatorCameras())
+            foreach (Camera specCam in Util.GetSpectatorCameras())
             {
                 specCam.depth = active ? 50 : -6;
             }
@@ -539,7 +513,7 @@ namespace Triquetra.FlatScreen2
 
         public void MouseMoveCamera()
         {
-            if (Input.GetMouseButton(1) && !trackIRTransformer.IsRunning)
+            if (Input.GetMouseButton(1) && !trackIRTransformer.IsRunning && !cursorOverWindow)
             {
                 cameraRotation.x += Input.GetAxis("Mouse X") * Preferences.instance.mouseSensitivity;
                 cameraRotation.y += Input.GetAxis("Mouse Y") * Preferences.instance.mouseSensitivity;
@@ -555,10 +529,6 @@ namespace Triquetra.FlatScreen2
 
                 // TODO?: change to subtle cursor location indication (ie. cross)
                 Cursor.visible = false;
-            }
-            else
-            {
-                Cursor.visible = true;
             }
         }
         
@@ -591,7 +561,7 @@ namespace Triquetra.FlatScreen2
         {
             if (cameraEyeGameObject == null)
             {
-                cameraEyeGameObject = GetEyeCamera()?.gameObject;
+                cameraEyeGameObject = Util.GetEyeCamera()?.gameObject;
 
                 if (cameraEyeGameObject != null)
                 {
@@ -626,7 +596,7 @@ namespace Triquetra.FlatScreen2
 
         public void RegrabTracks()
         {
-            FlatScreen2Plugin.Write("Regrabbing tracked player objects...");
+            Plugin.Write("Regrabbing tracked player objects...");
             cameraEyeGameObject = null;
             cameraHMDGameObject = null;
             playerBody = null;
@@ -635,16 +605,16 @@ namespace Triquetra.FlatScreen2
 
             if (TryUpdateCameraTracks())
             {
-                FlatScreen2Plugin.Write($"    Camera grabbed: {cameraEyeGameObject}");
+                Plugin.Write($"    Camera grabbed: {cameraEyeGameObject}");
                 ResetCameraRotation();
                 SetCameraFOV(currentFOV);
             }
             else
             {
-                FlatScreen2Plugin.Write($"    Could not find camera!");
+                Plugin.Write($"    Could not find camera!");
             }
 
-            foreach (Camera specCam in GetSpectatorCameras())
+            foreach (Camera specCam in Util.GetSpectatorCameras())
             {
                 specCam.depth = -6;
             }
@@ -660,7 +630,7 @@ namespace Triquetra.FlatScreen2
 
             List<VRInteractable> intersectedInteractables = new List<VRInteractable>();
 
-            foreach (VRInteractable interactable in VRInteractables)
+            foreach (VRInteractable interactable in vrInteractables)
             {
                 if (interactable == null || interactable.transform == null)
                     continue;
@@ -802,7 +772,7 @@ namespace Triquetra.FlatScreen2
             HighlightObject(targetedVRInteractable);
             // TODO: set cursor texture
 
-            if (Input.GetMouseButtonDown(0)) // left mouse down
+            if (Input.GetMouseButtonDown(0) && !cursorOverWindow) // left mouse down
             {
                 if (targetedVRInteractable != null && heldVRInteractable == null)
                 {
@@ -822,7 +792,7 @@ namespace Triquetra.FlatScreen2
             // TODO: UI scrollbar dragging
 
             // scroll wheel
-            if (Input.mouseScrollDelta.y != 0)
+            if (Input.mouseScrollDelta.y != 0 && !cursorOverWindow)
             {
                 // eww
                 if (
@@ -878,6 +848,18 @@ namespace Triquetra.FlatScreen2
             if (!flatScreenEnabled || cameraEyeGameObject == null)
                 return;
 
+            // Cursor autohide
+            if (Input.GetAxis("Mouse X") != 0 || Input.GetAxis("Mouse Y") != 0 ||
+                Input.GetMouseButton(0) || Input.GetMouseButton(1))
+            {
+                cursorHideTimer = CURSOR_HIDE_AFTER;
+            }
+            else if (cursorHideTimer > 0)
+            {
+                cursorHideTimer -= Time.deltaTime;
+            }
+            Cursor.visible = cursorHideTimer > 0;
+
             MouseMoveCamera();
         }
         
@@ -901,13 +883,13 @@ namespace Triquetra.FlatScreen2
                 // check if mission has ended
                 if (!endMissionWindowAutoShown && CheckMissionEnded())
                 {
-                    FlatScreen2Plugin.Write("Ended mission! Auto-showing mission end window...");
+                    Plugin.Write("Ended mission! Auto-showing mission end window...");
                     showEndMissionWindow = false;
                     ToggleEndMissionWindow();
                     endMissionWindowAutoShown = true;
                 }
 
-                VRInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
+                vrInteractables = GameObject.FindObjectsOfType<VRInteractable>(false);
             }
         }
 

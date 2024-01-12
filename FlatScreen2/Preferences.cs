@@ -29,20 +29,20 @@ namespace Triquetra.FlatScreen2
 
         public void Save()
         {
-            FlatScreen2Plugin.Write("Saving preferences...");
+            Plugin.Write("Saving preferences...");
             var serializer = new XmlSerializer(typeof(Preferences));
             using (TextWriter writer = new StreamWriter(filePath))
             {
                 serializer.Serialize(writer, this);
             }
-            FlatScreen2Plugin.Write("Preferences saved!");
+            Plugin.Write("Preferences saved!");
         }
 
         public void Load()
         {
             if (File.Exists(filePath))
             {
-                FlatScreen2Plugin.Write("Loading preferences...");
+                Plugin.Write("Loading preferences...");
                 XmlSerializer serializer = new XmlSerializer(typeof(Preferences));
                 using (Stream reader = new FileStream(filePath, FileMode.Open))
                 {
@@ -54,11 +54,11 @@ namespace Triquetra.FlatScreen2
                     limitYRot = load.limitYRot;
                     mouseSensitivity = load.mouseSensitivity;
                 }
-                FlatScreen2Plugin.Write("Preferences loaded!");
+                Plugin.Write("Preferences loaded!");
             }
             else
             {
-                FlatScreen2Plugin.Write("Could not find preferences file.");
+                Plugin.Write("Could not find preferences file.");
                 Save();
             }
         }
