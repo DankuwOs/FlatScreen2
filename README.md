@@ -1,12 +1,15 @@
 # FlatScreen 2
-A *VTOL VR* mod that removes the VR, allowing you to play without a VR headset.
+An update to a *VTOL VR* mod that can remove the VR, partially allowing for play without a VR headset.
 
 This is an extension of the original [FlatScreen mod by frdhog](https://vtolvr-mods.com/mod/zj7ylyrf/).
 
-**NOTE:** This mod only allows for looking around and clicking on interactive elements. You will need to have a mod that allows for joystick inputs..
+**NOTE:** This mod only allows for looking around and clicking on interactive elements. You will need to have a mod that allows for joystick inputs.
 
 ## Changes from original mod (not exhaustive)
+- can initialize with VR active
 - new mouse controls
-- avatar body hiding
-- HMCS and NVG fixes
+- avatar body hidden to more easily see cockpit
+- HMCS and NVG now work properly
+- less likely to require camera resetting
+- certain options now save
 - various minor bug/QoL fixes
