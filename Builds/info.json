@@ -1,7 +1,7 @@
 {
   "name": "FlatScreen2",
   "description": "A updates/overhaul to frdhog's original FlatScreen mod.\r\n\r\nChanges from original mod:\r\n- can initialize with VR active\r\n- new mouse controls\r\n- avatar body hidden to more easily see cockpit\r\n- HMCS and NVG now work properly\r\n- less likely to require camera resetting\r\n- certain options now save\r\n- various minor bug/QoL fixes\r\n\r\nHold right mouse button to look around, or use **TrackIR.**\r\n\r\nUse left click to click buttons, flick levers and toggle doors. You can use the scroll wheel to turn knobs, move levers, and adjust throttle.",
-  "dll_file": "",
+  "dll_file": "FlatScreen2.dll",
   "last_edit": 638406947251105995,
   "pub_id": "",
   "json_version": "",
@@ -17,6 +17,6 @@
     "TriquetraInteractions.dll"
   ],
   "mod_dependencies": null,
-  "menu_mod": false,
+  "menu_mod": true,
   "ContentType": 3
 }
