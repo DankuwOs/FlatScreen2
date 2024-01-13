@@ -1,22 +1,22 @@
 {
   "name": "FlatScreen2",
-  "description": "An update/overhaul of frdhog's [original FlatScreen mod](https://vtolvr-mods.com/mod/zj7ylyrf/).\r\n\r\n**MAKE SURE TO UNINSTALL THE ORIGINAL MOD BEFORE RUNNING THIS ONE!!!**\r\n\r\nChanges from original mod:\r\n- can initialize with VR active\r\n- new mouse controls\r\n- avatar body hidden to more easily see cockpit\r\n- HMCS and NVG now work properly\r\n- less likely to require camera resetting\r\n- certain options now save\r\n- various minor bug/QoL fixes\r\n\r\nHold right mouse button to look around, or use **TrackIR.**\r\n\r\nUse left click to click buttons, flick levers and toggle doors. You can use the scroll wheel to turn knobs, move levers, and adjust throttle.\r\n\r\nYou can use [TriquetraInput](https://vtolvr-mods.com/mod/twr27qgs/) to fly with your joystick(s).\r\n**UPDATE TO THAT MOD IS COMING SOON**",
-  "dll_file": "FlatScreen2.dll",
-  "last_edit": 638406144681299909,
+  "description": "A updates/overhaul to frdhog's original FlatScreen mod.\r\n\r\nChanges from original mod:\r\n- can initialize with VR active\r\n- new mouse controls\r\n- avatar body hidden to more easily see cockpit\r\n- HMCS and NVG now work properly\r\n- less likely to require camera resetting\r\n- certain options now save\r\n- various minor bug/QoL fixes\r\n\r\nHold right mouse button to look around, or use **TrackIR.**\r\n\r\nUse left click to click buttons, flick levers and toggle doors. You can use the scroll wheel to turn knobs, move levers, and adjust throttle.",
+  "dll_file": "",
+  "last_edit": 638406947251105995,
   "pub_id": "",
   "json_version": "",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "tagline": "Without \"VR\" it's just VTOL.",
   "repository": "",
-  "is_public": false,
-  "unlisted": true,
-  "preview_image": "",
+  "is_public": true,
+  "unlisted": false,
+  "preview_image": "preview.png",
   "web_preview_image": "web_preview.png",
   "dependencies": [
     "TrackIRUnity.dll",
     "TriquetraInteractions.dll"
   ],
   "mod_dependencies": null,
-  "menu_mod": true,
+  "menu_mod": false,
   "ContentType": 3
 }
