@@ -1,5 +1,5 @@
-﻿using Harmony;
-
+﻿using HarmonyLib;
+using UnityEngine;
 using UnityEngine.XR;
 
 namespace Triquetra.FlatScreen2
@@ -69,6 +69,21 @@ namespace Triquetra.FlatScreen2
                 traverse.Field("grabbed").SetValue(true);
                 __instance.transform.position = __instance.headHelmet.transform.position;
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(FlybyCameraMFDPage), nameof(FlybyCameraMFDPage.currentFov), MethodType.Getter)]
+    internal class FlybyCameraMFDPagePatch
+    {
+        static bool Prefix(ref float __result)
+        {
+            if (FlatScreen2MonoBehaviour.instance.viewIsSpec)
+            {
+                __result = FlatScreen2MonoBehaviour.instance.currentFOV;
+                return false;
+            }
+
+            return true;
         }
     }
 }

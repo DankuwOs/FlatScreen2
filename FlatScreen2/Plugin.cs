@@ -1,13 +1,13 @@
-using System;
 using System.IO;
 using System.Reflection;
-
-using Harmony;
+using ModLoader.Framework;
+using ModLoader.Framework.Attributes;
 using UnityEngine;
 
 namespace Triquetra.FlatScreen2
 {
-    public class Plugin : VTOLMOD
+    [ItemId("danku-flatscreen2")]
+    public class Plugin : VtolMod
     {
         protected static Plugin instance;
 
@@ -20,11 +20,11 @@ namespace Triquetra.FlatScreen2
         /// <param name="msg"></param>
         public static void Write(object msg)
         {
-            instance.Log(msg);
+            Debug.Log(msg);
         }
 
         // This method is run once, when the Mod Loader is done initialising this game object
-        public override void ModLoaded()
+        public void Awake()
         {
             if (instance != null)
             {
@@ -35,14 +35,8 @@ namespace Triquetra.FlatScreen2
 
             instance = this;
 
-            Write($"Mod folder: {ModFolder}");
-            HarmonyInstance harmonyInstance = HarmonyInstance.Create("muskit.FlatScreen2");
-            harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
-
             InitPreferences();
             InitMonoBehaviour();
-
-            base.ModLoaded();
         }
 
         public void InitPreferences()
@@ -58,10 +52,15 @@ namespace Triquetra.FlatScreen2
         {
             if (mbInstance != null)
                 return;
-            Log("Creating FlatScreen2MonoBehaviour");
+            Debug.Log("Creating FlatScreen2MonoBehaviour");
             mbInstance = new GameObject();
             mbInstance.AddComponent<FlatScreen2MonoBehaviour>();
             GameObject.DontDestroyOnLoad(mbInstance);
+        }
+
+        public override void UnLoad()
+        {
+            Destroy(mbInstance);
         }
     }
 }

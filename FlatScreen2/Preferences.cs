@@ -18,6 +18,9 @@ namespace Triquetra.FlatScreen2
         public bool limitYRot = true;
         public int mouseSensitivity = 2;
 
+        public bool useSphere = true;
+        public float sphereSize = 0.015f;
+
         [XmlIgnore]
         public string filePath;
 
@@ -53,6 +56,8 @@ namespace Triquetra.FlatScreen2
                     limitXRot = load.limitXRot;
                     limitYRot = load.limitYRot;
                     mouseSensitivity = load.mouseSensitivity;
+
+                    useSphere = load.useSphere;
                 }
                 Plugin.Write("Preferences loaded!");
             }

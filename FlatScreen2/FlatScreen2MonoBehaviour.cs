@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-
+using RewiredConsts;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -11,6 +11,8 @@ using UnityEngine.UI;
 using VTOLVR.Multiplayer;
 
 using Triquetra.FlatScreen.TrackIR;
+using UnityEngine.Serialization;
+using VTOLAPI;
 
 namespace Triquetra.FlatScreen2
 {
@@ -34,7 +36,7 @@ namespace Triquetra.FlatScreen2
 
         // UI: main window
         private bool showMainWindow = true;
-        private Rect mainWindowRect = new Rect(25, 25, 350, 550);
+        private Rect mainWindowRect = new Rect(25, Screen.height - 575, 350, 550);
         private Vector2 mainWindowScroll;
 
         // UI: EndMission
@@ -65,7 +67,7 @@ namespace Triquetra.FlatScreen2
 
         // current FOV
         public const int DEFAULT_FOV = 60;
-        int currentFOV = DEFAULT_FOV;
+        public float currentFOV = DEFAULT_FOV;
 
         // camera tracks
         private GameObject cameraEyeGameObject;
@@ -84,7 +86,12 @@ namespace Triquetra.FlatScreen2
 
         private bool cursorOverWindow = false;
 
-        private bool viewIsSpec = false;
+        public bool viewIsSpec = false;
+
+        private float _targetFoV = 60f;
+
+        private bool _interactingCenter;
+        private bool _lastInteractingCenter;
 
         /// <summary>
         /// Check if the mission has ended. Also populates this.endMission if it's null.
@@ -109,6 +116,16 @@ namespace Triquetra.FlatScreen2
             }
             else
                 instance = this;
+
+            VTAPI.RegisterVariable("Danku-FS2",
+                new VTModVariable("SetZoom", currentFOV, o => _targetFoV = (float)o, null,
+                    VTModVariable.VariableAccess.Setter));
+            VTAPI.RegisterVariable("Danku-FS2", new VTModVariable("InteractCenter", OnInteractCenter));
+        }
+
+        private void OnInteractCenter()
+        {
+            _interactingCenter = true;
         }
 
         public void Activate()
@@ -210,10 +227,10 @@ namespace Triquetra.FlatScreen2
                         GUILayout.BeginHorizontal();
                         {
                             GUILayout.Label($"FOV: {currentFOV}");
-                            int newFOV = (int)Mathf.Round(GUILayout.HorizontalSlider(currentFOV, 30f, 120f));
+                            float tFov = GUILayout.HorizontalSlider(currentFOV, 30f, 120f);
 
-                            if (newFOV != currentFOV)
-                                SetCameraFOV(newFOV);
+                            if (!Mathf.Approximately(tFov, currentFOV))
+                                SetCameraFOV(tFov);
                         }
                         GUILayout.EndHorizontal();
                     }
@@ -230,6 +247,14 @@ namespace Triquetra.FlatScreen2
                             Preferences.instance.zoomReqCtrlRMB,
                             " Require Ctrl/RMB to scroll-zoom\n (might be useful for trackpad pinch-zoomers!"
                         );
+
+                    Preferences.instance.useSphere = GUILayout.Toggle(Preferences.instance.useSphere,
+                        "Always use VRInteract Sphere: ");
+                    
+                    GUILayout.Label($"Min Sphere Size: {Preferences.instance.sphereSize}");
+                    Preferences.instance.sphereSize = 
+                        GUILayout.HorizontalSlider(Preferences.instance.sphereSize, 0.001f, 0.15f);
+                    
 
                     LimitXRotation =
                         Preferences.instance.limitXRot = GUILayout.Toggle(LimitXRotation, " Limit X Rotation");
@@ -507,8 +532,12 @@ namespace Triquetra.FlatScreen2
         {
             foreach (Camera specCam in Util.GetSpectatorCameras())
             {
-                specCam.depth = active ? 50 : -6;
+                if (specCam)
+                    specCam.depth = active ? 50 : -6;
             }
+
+            if (Util.GetEyeCamera() is var e)
+                e.enabled = !active;
         }
 
         public void MouseMoveCamera()
@@ -538,16 +567,25 @@ namespace Triquetra.FlatScreen2
             cameraRotation = Vector2.zero;
         }
 
-        public void SetCameraFOV(int fov)
+        public void SetCameraFOV(float fov)
         {
+            fov = Mathf.SmoothStep(currentFOV, fov, Time.deltaTime * 25);
             fov = Mathf.Clamp(fov, 30, 120);
+            
             currentFOV = fov;
-
+            
+            if (viewIsSpec)
+            {
+                FlybyCameraMFDPage.instance.UpdateAllLabels(); // set fov and stuff
+            }
+            
             if (cameraEyeGameObject != null)
                 cameraEyeGameObject.GetComponent<Camera>().fieldOfView = fov;
             if (cameraHMDGameObject != null)
                 cameraHMDGameObject.GetComponent<Camera>().fieldOfView = fov;
         }
+        
+
         public float GetCameraFOV()
         {
             return cameraEyeGameObject.GetComponent<Camera>().fieldOfView;
@@ -626,31 +664,80 @@ namespace Triquetra.FlatScreen2
         public void GetHoveredObject()
         {
             Camera camera = cameraEyeGameObject.GetComponent<Camera>();
-            Ray ray = camera.ScreenPointToRay(Input.mousePosition, Camera.MonoOrStereoscopicEye.Mono);
+            
+            bool centerInteract = false;
+            if (_interactingCenter)
+            {
+                if (_lastInteractingCenter)
+                {
+                    _lastInteractingCenter = false;
+                    _interactingCenter = false;
+                }
+                else
+                {
+                    centerInteract = true;
+                    _lastInteractingCenter = true;
+                }
+            }
+            
+            Ray ray;
+            if (centerInteract)
+            {
+                ray = new Ray(camera.transform.position, camera.transform.forward);
+            }
+            else
+                ray = camera.ScreenPointToRay(Input.mousePosition, Camera.MonoOrStereoscopicEye.Mono);
 
             List<VRInteractable> intersectedInteractables = new List<VRInteractable>();
 
             foreach (VRInteractable interactable in vrInteractables)
             {
-                if (interactable == null || interactable.transform == null)
+                
+                if (interactable == null || interactable.enabled == false ||  interactable.transform == null)
                     continue;
 
                 Bounds bounds;
 
-                float radius = Mathf.Min(Mathf.Max(0.01f, interactable.radius), 0.1f); // have a minimum (and maximum) radius to avoid 0 size radius (and to avoid having to calculate rect sizes)
-                bounds = new Bounds(interactable.transform.position, Vector3.one * radius);
-
-                if (bounds.IntersectRay(ray))
+                if (!Preferences.instance.useSphere && interactable.useRect && !(Input.GetKey(KeyCode.Alpha9) || Input.GetMouseButton(3)))
                 {
-                    intersectedInteractables.Add(interactable);
+                    bounds = new Bounds(interactable.rect.center,
+                        interactable.rect.size);
+                    
+                    // Transform the world space ray into local space to test againt the bounds, this allows for rotation to be accounted for.
+                    var localRay = new Ray(interactable.transform.InverseTransformPoint(ray.origin),
+                        interactable.transform.InverseTransformDirection(ray.direction));
+                    
+                    if (bounds.IntersectRay(localRay))
+                    {
+                        intersectedInteractables.Add(interactable);
+                    }
+                }
+                else
+                {
+                    float radius = Mathf.Max(Preferences.instance.sphereSize, interactable.radius);
+                    bounds = new Bounds(interactable.transform.position, Vector3.one * radius);
+                    
+                    if (bounds.IntersectRay(ray))
+                    {
+                        intersectedInteractables.Add(interactable);
+                    }
                 }
             }
 
-            float depth = 0.5f;
             targetedVRInteractable = intersectedInteractables
-                .Where(x => x != null && x.transform != null)
-                .OrderBy((x) => Vector3.Distance(x.transform.position, ray.origin + (ray.direction * depth)))
+                .OrderBy((x) => Vector3.Distance(GetInteractablePosition(x), ray.origin) / Vector3.Dot(ray.direction, GetInteractablePosition(x) - ray.origin))
                 .FirstOrDefault();
+            
+            if (centerInteract)
+            {
+                Interactions.Interact(targetedVRInteractable);
+                Interactions.AntiInteract(targetedVRInteractable);
+            }
+        }
+
+        private Vector3 GetInteractablePosition(VRInteractable vrInteractable)
+        {
+            return vrInteractable.useRect ? vrInteractable.transform.TransformPoint(vrInteractable.rect.center) : vrInteractable.transform.position;
         }
 
         MeshRenderer PreviouslyHighlightedInteractableRenderer;
@@ -790,6 +877,9 @@ namespace Triquetra.FlatScreen2
             }
 
             // TODO: UI scrollbar dragging
+            
+            if (!Mathf.Approximately(_targetFoV, currentFOV))
+                SetCameraFOV(_targetFoV);
 
             // scroll wheel
             if (Input.mouseScrollDelta.y != 0 && !cursorOverWindow)
@@ -807,8 +897,9 @@ namespace Triquetra.FlatScreen2
                         )
                     )
                 {
-                    int newFOV = currentFOV + (Input.mouseScrollDelta.y < 0 ? 5 : -5);
-                    SetCameraFOV(newFOV);
+                    _targetFoV += (Input.mouseScrollDelta.y < 0 ? 5 : -5);
+                    _targetFoV = Mathf.Clamp(_targetFoV, 30, 120);
+                    SetCameraFOV(_targetFoV);
                 }
                 else if (targetedVRInteractable != null) // otherwise, scrollable interact
                 {
