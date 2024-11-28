@@ -14,6 +14,8 @@ namespace Triquetra.FlatScreen2
         public GameObject mbInstance;
         public Preferences pref;
 
+        public static Texture2D cursorTex;
+
         /// <summary>
         /// Print to stdout with the mod name prepended.
         /// </summary>
@@ -37,6 +39,23 @@ namespace Triquetra.FlatScreen2
 
             InitPreferences();
             InitMonoBehaviour();
+            
+            string modDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            if (modDirectory != null)
+            {
+                string cursorPath = Path.Combine(modDirectory, "cursorTex.png");
+                if (File.Exists(cursorPath))
+                {
+                    Debug.Log($"Loading cursor texture from {cursorPath}");
+                    cursorTex = new Texture2D(2, 2);
+                    byte[] textureData = File.ReadAllBytes(cursorPath);
+                    cursorTex.LoadImage(textureData);
+                }
+                else
+                {
+                    Debug.Log($"Couldn't load cursor texture from {cursorPath}");
+                }
+            }
         }
 
         public void InitPreferences()

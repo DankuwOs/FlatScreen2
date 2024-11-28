@@ -54,11 +54,13 @@ namespace Triquetra.FlatScreen2
         // camera looking preferences
         private float rotLimX = 160f; // set to -1 to disable
         private float rotLimY = 89f; // set to -1 to disable
+
         public bool LimitXRotation
         {
             get { return rotLimX >= 0; }
             set { rotLimX = value ? 160f : -1f; }
         }
+
         public bool LimitYRotation
         {
             get { return rotLimY >= 0; }
@@ -73,6 +75,9 @@ namespace Triquetra.FlatScreen2
         private GameObject cameraEyeGameObject;
         private GameObject cameraHMDGameObject;
         private GameObject cameraHelmetGameObject;
+
+        private GameObject crosshairCanvasObject;
+        
         private Vector2 cameraRotation = Vector2.zero;
 
         // player avatar
@@ -93,6 +98,8 @@ namespace Triquetra.FlatScreen2
         private bool _interactingCenter;
         private bool _lastInteractingCenter;
 
+        private Vector2 _inputCameraRotation = Vector2.zero;
+
         /// <summary>
         /// Check if the mission has ended. Also populates this.endMission if it's null.
         /// </summary>
@@ -111,16 +118,30 @@ namespace Triquetra.FlatScreen2
         {
             if (instance != null)
             {
-                Plugin.Write("WARNING: Tried to create another MonoBehaviour instance when one already exists! Destroying self.");
+                Plugin.Write(
+                    "WARNING: Tried to create another MonoBehaviour instance when one already exists! Destroying self.");
                 Destroy(this);
             }
             else
                 instance = this;
 
             VTAPI.RegisterVariable("Danku-FS2",
-                new VTModVariable("SetZoom", currentFOV, o => _targetFoV = (float)o, null,
+                new VTModVariable("SetZoom", currentFOV, setValue => _targetFoV = (float)setValue, null,
                     VTModVariable.VariableAccess.Setter));
-            VTAPI.RegisterVariable("Danku-FS2", new VTModVariable("InteractCenter", OnInteractCenter));
+            VTAPI.RegisterVariable("Danku-FS2",
+                new VTModVariable("RotateCamera", _inputCameraRotation,
+                    setValue => _inputCameraRotation = (Vector2)setValue, null, VTModVariable.VariableAccess.Setter));
+            /*VTAPI.RegisterVariable("Danku-FS2",
+                new VTModVariable("InteractCenter", OnInteractCenter));*/
+            VTAPI.RegisterVariable("Danku-FS2",
+                new VTModVariable("InteractCenter", _interactingCenter, setValue => _interactingCenter = (bool)setValue,
+                    null, VTModVariable.VariableAccess.Setter));
+
+            // Used by triquetra input to check if it is allowed to set the cursor visibility (stop flickering cursor)
+            VTAPI.RegisterVariable("Danku-FS2",
+                new VTModVariable("CursorHideTimer", cursorHideTimer, null,
+                    (ref object getValue) => getValue = cursorHideTimer,
+                    VTModVariable.VariableAccess.Getter));
         }
 
         private void OnInteractCenter()
@@ -138,6 +159,33 @@ namespace Triquetra.FlatScreen2
 
             VideoSettings();
             ResetState();
+
+            if (Plugin.cursorTex != null)
+            {
+                // Create the Canvas
+                crosshairCanvasObject = new GameObject("Canvas");
+                DontDestroyOnLoad(crosshairCanvasObject);
+                Canvas canvas = crosshairCanvasObject.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                CanvasScaler canvasScaler = crosshairCanvasObject.AddComponent<CanvasScaler>();
+                canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+
+                // Create the Image
+                GameObject imageGO = new GameObject("Image");
+                imageGO.transform.SetParent(crosshairCanvasObject.transform);
+                RawImage image = imageGO.AddComponent<RawImage>();
+                image.texture = Plugin.cursorTex;
+
+                // Center the Image and set its size
+                RectTransform rectTransform = image.GetComponent<RectTransform>();
+                rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+                rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                rectTransform.anchoredPosition = Vector2.zero;
+                rectTransform.sizeDelta = new Vector2(8, 8);
+                
+                crosshairCanvasObject.SetActive(Preferences.instance.enableCrosshair);
+            }
         }
 
         public void OnSceneChange(Scene sc1, Scene scn2)
@@ -234,7 +282,7 @@ namespace Triquetra.FlatScreen2
                         }
                         GUILayout.EndHorizontal();
                     }
-
+                    
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"Mouse Sensitivity: {Preferences.instance.mouseSensitivity}");
                     Preferences.instance.mouseSensitivity = (int) Mathf.Round(
@@ -247,6 +295,13 @@ namespace Triquetra.FlatScreen2
                             Preferences.instance.zoomReqCtrlRMB,
                             " Require Ctrl/RMB to scroll-zoom\n (might be useful for trackpad pinch-zoomers!"
                         );
+                    
+                    Preferences.instance.enableCrosshair = 
+                        GUILayout.Toggle(
+                            Preferences.instance.enableCrosshair,
+                            " Show a crosshair in the center\n of the screen for interacting with no mouse."
+                        );
+                    crosshairCanvasObject.SetActive(Preferences.instance.enableCrosshair);
 
                     Preferences.instance.useSphere = GUILayout.Toggle(Preferences.instance.useSphere,
                         "Always use VRInteract Sphere: ");
@@ -320,6 +375,13 @@ namespace Triquetra.FlatScreen2
                             pilotSelectUI.SelectVehicleButton();
                         }
                     }*/
+                    
+                    
+                    GUILayout.BeginHorizontal();
+                    {
+                        GUILayout.Label($"Input Camera Rotation: ({_inputCameraRotation.x}, {_inputCameraRotation.y})");
+                    }
+                    GUILayout.EndHorizontal();
 
                     GUILayout.Space(30);
 
@@ -560,6 +622,21 @@ namespace Triquetra.FlatScreen2
                 Cursor.visible = false;
             }
         }
+
+        public void ControlMoveCamera()
+        {
+            
+            cameraRotation.x += _inputCameraRotation.x * Preferences.instance.mouseSensitivity;
+            cameraRotation.y += _inputCameraRotation.y * Preferences.instance.mouseSensitivity;
+            if (rotLimX > 0)
+                cameraRotation.x = Mathf.Clamp(cameraRotation.x, -rotLimX, rotLimX);
+            if (rotLimY > 0)
+                cameraRotation.y = Mathf.Clamp(cameraRotation.y, -rotLimY, rotLimY);
+            var xQuat = Quaternion.AngleAxis(cameraRotation.x, Vector3.up);
+            var yQuat = Quaternion.AngleAxis(cameraRotation.y, Vector3.left);
+
+            cameraEyeGameObject.transform.localRotation = xQuat * yQuat; //Quaternions seem to rotate more consistently than EulerAngles. Sensitivity seemed to change slightly at certain degrees using Euler.
+        }
         
         public void ResetCameraRotation()
         {
@@ -666,22 +743,23 @@ namespace Triquetra.FlatScreen2
             Camera camera = cameraEyeGameObject.GetComponent<Camera>();
             
             bool centerInteract = false;
+            bool centerHover = false;
             if (_interactingCenter)
+            {
+                centerHover = true;
+                _lastInteractingCenter = true;
+            }
+            else
             {
                 if (_lastInteractingCenter)
                 {
-                    _lastInteractingCenter = false;
-                    _interactingCenter = false;
-                }
-                else
-                {
                     centerInteract = true;
-                    _lastInteractingCenter = true;
+                    _lastInteractingCenter = false;
                 }
             }
             
             Ray ray;
-            if (centerInteract)
+            if (centerInteract || centerHover)
             {
                 ray = new Ray(camera.transform.position, camera.transform.forward);
             }
@@ -856,6 +934,11 @@ namespace Triquetra.FlatScreen2
             if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z))
                 ResetCameraRotation();
 
+            if (_inputCameraRotation.magnitude > 0.001f)
+            {
+                ControlMoveCamera();
+            }
+
             HighlightObject(targetedVRInteractable);
             // TODO: set cursor texture
 
@@ -865,6 +948,11 @@ namespace Triquetra.FlatScreen2
                 {
                     Interactions.Interact(targetedVRInteractable);
                     heldVRInteractable = targetedVRInteractable;
+                    AeroGeometryLever aeroGeometryLever = targetedVRInteractable?.GetComponent<AeroGeometryLever>();
+                    if (aeroGeometryLever != null)
+                    {
+                        aeroGeometryLever.RemoteSetAuto();
+                    }
                 }
             }
             if (Input.GetMouseButtonUp(0)) // left mouse up
@@ -909,6 +997,8 @@ namespace Triquetra.FlatScreen2
                     VRLever lever = targetedVRInteractable?.GetComponent<VRLever>();
                     VRThrottle throttle = targetedVRInteractable?.GetComponent<VRThrottle>();
                     VRIntUIScroller uiScroll = targetedVRInteractable?.GetComponent<VRIntUIScroller>();
+                    AeroGeometryLever aeroGeometryLever = targetedVRInteractable?.GetComponent<AeroGeometryLever>();
+                    
 
                     if (twistKnob != null)
                     {
@@ -929,6 +1019,10 @@ namespace Triquetra.FlatScreen2
                     else if (uiScroll != null)
                     {
                         uiScroll.scrollRect.normalizedPosition += 0.1f * Input.mouseScrollDelta;
+                    }
+                    else if (aeroGeometryLever != null)
+                    {
+                        aeroGeometryLever.RemoteSetManual(Input.mouseScrollDelta.y > 0 ? -0.05f : 0.05f);
                     }
                 }
             }

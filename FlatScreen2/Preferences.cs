@@ -21,6 +21,8 @@ namespace Triquetra.FlatScreen2
         public bool useSphere = true;
         public float sphereSize = 0.015f;
 
+        public bool enableCrosshair = false;
+
         [XmlIgnore]
         public string filePath;
 
@@ -58,6 +60,7 @@ namespace Triquetra.FlatScreen2
                     mouseSensitivity = load.mouseSensitivity;
 
                     useSphere = load.useSphere;
+                    enableCrosshair = load.enableCrosshair;
                 }
                 Plugin.Write("Preferences loaded!");
             }
