@@ -3,13 +3,15 @@ using System.Reflection;
 using ModLoader.Framework;
 using ModLoader.Framework.Attributes;
 using UnityEngine;
+using VTOLAPI;
 
 namespace Triquetra.FlatScreen2
 {
     [ItemId("danku-flatscreen2")]
     public class Plugin : VtolMod
     {
-        protected static Plugin instance;
+        public static Plugin instance;
+        public static bool IsEditor;
 
         public GameObject mbInstance;
         public Preferences pref;
@@ -39,6 +41,8 @@ namespace Triquetra.FlatScreen2
 
             InitPreferences();
             InitMonoBehaviour();
+
+            VTAPI.SceneLoaded += SceneLoaded;
             
             string modDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             if (modDirectory != null)
@@ -79,7 +83,26 @@ namespace Triquetra.FlatScreen2
 
         public override void UnLoad()
         {
+            VTAPI.SceneLoaded -= SceneLoaded;
+            
             Destroy(mbInstance);
+        }
+
+        private void SceneLoaded(VTScenes scene)
+        {
+            switch (scene)
+            {
+                case VTScenes.VTEditMenu:
+                case VTScenes.VTEditLoadingScene:
+                case VTScenes.VTMapEditMenu:
+                    IsEditor = true;
+                    break;
+                case VTScenes.ReadyRoom:
+                case VTScenes.SamplerScene:
+                case VTScenes.LaunchSplashScene:
+                    IsEditor = false;
+                    break;
+            }
         }
     }
 }

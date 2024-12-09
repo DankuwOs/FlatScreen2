@@ -916,13 +916,14 @@ namespace Triquetra.FlatScreen2
 
         public void Update()
         {
+            
             if (Input.GetKeyDown(KeyCode.F9))
             {
                 showMainWindow = !showMainWindow;
                 Preferences.instance.Save();
             }
 
-            if (!flatScreenEnabled)
+            if (!flatScreenEnabled || Plugin.IsEditor)
                 return;
 
             if (Input.GetKeyDown(KeyCode.Escape))
@@ -1030,7 +1031,7 @@ namespace Triquetra.FlatScreen2
 
         public void LateUpdate()
         {
-            if (!flatScreenEnabled || cameraEyeGameObject == null)
+            if (!flatScreenEnabled || Plugin.IsEditor || cameraEyeGameObject == null)
                 return;
 
             // Cursor autohide
@@ -1051,7 +1052,7 @@ namespace Triquetra.FlatScreen2
         // tick loop
         public void FixedUpdate()
         {
-            if (!flatScreenEnabled || cameraEyeGameObject == null)
+            if (!flatScreenEnabled || Plugin.IsEditor || cameraEyeGameObject == null)
                 return;
 
             frameTick++;
