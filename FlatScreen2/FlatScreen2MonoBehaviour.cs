@@ -711,6 +711,9 @@ namespace Triquetra.FlatScreen2
 
         public void RegrabTracks()
         {
+            // make fix camera make it worky again when loading a scenario from the editor.
+            Plugin.IsEditor = false;
+            
             Plugin.Write("Regrabbing tracked player objects...");
             cameraEyeGameObject = null;
             cameraHMDGameObject = null;

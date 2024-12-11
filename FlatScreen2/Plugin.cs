@@ -93,7 +93,6 @@ namespace Triquetra.FlatScreen2
             switch (scene)
             {
                 case VTScenes.VTEditMenu:
-                case VTScenes.VTEditLoadingScene:
                 case VTScenes.VTMapEditMenu:
                     IsEditor = true;
                     break;
